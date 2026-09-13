@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Integration tests run the Lua scripts against a real Redis, because
+    # miniredis interprets Lua with a different engine and the scripts are
+    # where a subtle difference would be both plausible and invisible.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Formatting
+        run: |
+          if [ -n "$(gofmt -l cmd internal)" ]; then
+            echo "These files need gofmt:"
+            gofmt -l cmd internal
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test -race ./...
+
+      - name: Integration tests
+        env:
+          REDIS_ADDR: 127.0.0.1:6379
+        run: go test -race -tags=integration ./...
+
+      - name: Build
+        run: go build ./...

@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored --
+# it carries your project and billing identifiers.
+
+project_id     = "your-project-id"
+project_number = "123456789012" # gcloud projects describe PROJECT_ID --format='value(projectNumber)'
+
+region = "us-central1"
+zone   = "us-central1-a"
+
+# Build and push first:
+#   gcloud builds submit --tag us-central1-docker.pkg.dev/PROJECT/drl-images/limiterd:v1
+image = "us-central1-docker.pkg.dev/your-project-id/drl-images/limiterd:v1"
+
+# Your own IP, not 0.0.0.0/0. Find it with: curl -s ifconfig.me
+ssh_source_ranges = ["203.0.113.4/32"]
+
+# gcloud billing accounts list
+billing_account = "000000-AAAAAA-BBBBBB"
+budget_amount   = 50

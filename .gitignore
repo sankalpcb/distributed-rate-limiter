@@ -1,0 +1,12 @@
+/bin/
+*.test
+# Raw benchmark output is committed deliberately -- see bench/results/README.md.
+# Only local scratch is ignored.
+bench/results/scratch/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+infra/terraform.tfvars
+.env
+.DS_Store

@@ -1,0 +1,28 @@
+# Local development stack. `make run-local` and the integration tests use this;
+# the cloud benchmark uses Memorystore instead.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  limiterd:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_ADDR: redis:6379
+      LIMITER_STRATEGY: ${LIMITER_STRATEGY:-centralized}
+      RATE: ${RATE:-1000}
+      BURST: ${BURST:-1000}
+      WINDOW: ${WINDOW:-1s}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-100ms}
+      FAIL_MODE: ${FAIL_MODE:-closed}
