@@ -176,11 +176,68 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 
 # --- Load generator ----------------------------------------------------------
 
+# The load generator drives `gcloud run services update` to sweep replica
+# counts and strategies, so it needs credentials. A dedicated account rather
+# than the default compute one: this VM is reachable over SSH and runs a load
+# generator, and the blast radius of a compromise should be "can reconfigure
+# one Cloud Run service", not "is a project Editor".
+#
+# Note that google_compute_instance attaches NO service account when the block
+# is omitted -- unlike the console, which quietly attaches the default. A VM
+# with no account gets no credentials at all, and every gcloud call on it fails.
+resource "google_service_account" "loadgen" {
+  account_id   = "${var.name_prefix}-loadgen"
+  display_name = "Load generator for the rate limiter benchmark"
+}
+
+# run.developer covers services.get and services.update, which is all the
+# harness does. run.admin would also allow deleting the service and editing
+# its IAM policy, neither of which the benchmark needs.
+resource "google_project_iam_member" "loadgen_run" {
+  project = var.project_id
+  role    = "roles/run.developer"
+  member  = "serviceAccount:${google_service_account.loadgen.email}"
+}
+
+# Cloud Run resolves and validates the container image as the principal doing
+# the deploy, not as the service's runtime identity. So the harness account
+# needs to read the repository too -- without this, `gcloud run services
+# update` fails on artifactregistry.repositories.downloadArtifacts even when
+# the update itself is permitted. Scoped to this one repository.
+resource "google_artifact_registry_repository_iam_member" "loadgen_pull" {
+  location   = google_artifact_registry_repository.images.location
+  repository = google_artifact_registry_repository.images.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.loadgen.email}"
+}
+
+# Updating a Cloud Run service requires actAs on the identity that service runs
+# as. Scoped to that one account rather than granted project-wide.
+resource "google_service_account_iam_member" "loadgen_actas_runtime" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.project_number}-compute@developer.gserviceaccount.com"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.loadgen.email}"
+}
+
 resource "google_compute_instance" "loadgen" {
   name         = "${var.name_prefix}-loadgen"
   machine_type = var.loadgen_machine_type
   zone         = var.zone
   tags         = ["loadgen"]
+
+  # Changing machine_type or service_account requires a stop/start. Allowing it
+  # matters in practice: if `sweep.sh validate` shows the generator saturating
+  # before the service does, resizing this VM is the fix, and that should be a
+  # one-line change plus an apply rather than a manual console dance.
+  allow_stopping_for_update = true
+
+  service_account {
+    email = google_service_account.loadgen.email
+    # cloud-platform defers authorisation entirely to the IAM roles above.
+    # The legacy per-scope model would silently block the Run API regardless
+    # of what roles the account holds.
+    scopes = ["cloud-platform"]
+  }
 
   boot_disk {
     initialize_params {
@@ -199,7 +256,9 @@ resource "google_compute_instance" "loadgen" {
     #!/bin/bash
     set -eux
     apt-get update
-    apt-get install -y git curl
+    # make is not on the Debian 12 cloud image, and the benchmark harness is
+    # driven through the Makefile.
+    apt-get install -y git curl make
     curl -sSL https://go.dev/dl/go1.26.0.linux-amd64.tar.gz -o /tmp/go.tgz
     rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz
     echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
