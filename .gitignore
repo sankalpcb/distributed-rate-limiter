@@ -6,7 +6,8 @@ bench/results/scratch/
 .terraform/
 *.tfstate
 *.tfstate.*
-.terraform.lock.hcl
+# .terraform.lock.hcl is committed on purpose: it pins provider versions so a
+# later apply resolves the same providers this plan was checked against.
 infra/terraform.tfvars
 .env
 .DS_Store

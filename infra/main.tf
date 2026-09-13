@@ -208,6 +208,31 @@ resource "google_compute_instance" "loadgen" {
 # Note: this NOTIFIES, it does not cap. GCP has no hard spend limit short of
 # wiring a budget through Pub/Sub to a function that disables billing, which is
 # rejected here as fragile and capable of killing a project mid-run.
+# Guardrails that would otherwise fail silently. A `check` block surfaces a
+# warning on every plan and apply rather than an error, so a deliberate choice
+# still goes through while an accidental omission stays visible.
+check "budget_is_configured" {
+  assert {
+    condition = var.billing_account != ""
+    error_message = join(" ", [
+      "No billing_account set, so NO BUDGET ALERT will be created.",
+      "You will have no notification as credits are consumed.",
+      "Find it with: gcloud billing accounts list",
+    ])
+  }
+}
+
+check "ssh_is_not_open_to_the_world" {
+  assert {
+    condition = !contains(var.ssh_source_ranges, "0.0.0.0/0")
+    error_message = join(" ", [
+      "ssh_source_ranges includes 0.0.0.0/0.",
+      "An open SSH port on a public IP is found by scanners within minutes.",
+      "Set it to your own address: curl -s ifconfig.me",
+    ])
+  }
+}
+
 resource "google_billing_budget" "budget" {
   count = var.billing_account == "" ? 0 : 1
 
