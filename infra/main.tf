@@ -17,6 +17,14 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+
+  # Some APIs -- billingbudgets among them -- refuse requests from user
+  # Application Default Credentials unless a quota project is attached. Setting
+  # it here rather than via `gcloud auth application-default set-quota-project`
+  # keeps the fix inside the repo, so a fresh clone works without first
+  # mutating the operator's global gcloud state.
+  billing_project       = var.project_id
+  user_project_override = true
 }
 
 locals {
@@ -241,11 +249,25 @@ resource "google_billing_budget" "budget" {
 
   budget_filter {
     projects = ["projects/${var.project_number}"]
+
+    # Measure GROSS cost, before free credits are applied.
+    #
+    # The API default is INCLUDE_ALL_CREDITS, which measures net cost -- what
+    # you actually pay. On a trial account that reads as zero for as long as
+    # the credits last, so the budget stays silent through the entire credit
+    # burn and only speaks up once real charges begin. That is the opposite of
+    # what is wanted here: the whole point is to watch the credits drain.
+    credit_types_treatment = var.budget_tracks_credits ? "EXCLUDE_ALL_CREDITS" : "INCLUDE_ALL_CREDITS"
   }
 
   amount {
     specified_amount {
-      currency_code = "USD"
+      # The budget's currency must match the billing account's, or the API
+      # rejects the request with a bare "invalid argument". Leave
+      # budget_currency empty to inherit the account's currency, which is the
+      # safe default. Check yours with:
+      #   gcloud billing accounts describe ACCOUNT_ID --format='value(currencyCode)'
+      currency_code = var.budget_currency != "" ? var.budget_currency : null
       units         = tostring(var.budget_amount)
     }
   }

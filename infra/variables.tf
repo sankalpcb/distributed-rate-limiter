@@ -62,10 +62,25 @@ variable "billing_account" {
 variable "budget_amount" {
   type        = number
   default     = 50
-  description = "Budget in USD. Alerts only -- this does not cap spending."
+  description = "Budget amount, in budget_currency. Alerts only -- this does not cap spending."
+}
+
+variable "budget_currency" {
+  type        = string
+  default     = ""
+  description = "Currency for the budget. Must match the billing account's currency or the API rejects the budget with a bare 'invalid argument'. Empty inherits the account's currency. Check with: gcloud billing accounts describe ACCOUNT_ID --format='value(currencyCode)'"
 }
 
 variable "budget_thresholds" {
-  type    = list(number)
-  default = [0.5, 1.0, 2.0] # $25, $50, $100 against a $50 budget
+  type = list(number)
+  # Fractions of budget_amount, so these are currency-agnostic: half, all, and
+  # double. The last one is the one that matters -- it fires when something has
+  # gone properly wrong.
+  default = [0.5, 1.0, 2.0]
+}
+
+variable "budget_tracks_credits" {
+  type        = bool
+  default     = true
+  description = "When true the budget measures gross cost, before free credits are applied, so alerts fire as trial credits are consumed. Set false to measure only out-of-pocket spend."
 }
