@@ -19,7 +19,7 @@ log() { printf '\n\033[1;34m### %s\033[0m\n' "$*" >&2; }
 
 # validate is the gate described in docs/design.md section 12: confirm the load
 # generator can actually produce the offered rate before trusting any result.
-# Runs against /healthz semantics -- a limit high enough that nothing is denied,
+# Runs against /health semantics -- a limit high enough that nothing is denied,
 # so the only thing under test is whether the client keeps up.
 validate() {
   log "VALIDATION: can the generator sustain its offered rate?"

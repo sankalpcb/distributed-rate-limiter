@@ -152,7 +152,9 @@ resource "google_cloud_run_v2_service" "limiterd" {
       }
 
       startup_probe {
-        http_get { path = "/healthz" }
+        # /health, not /healthz -- the latter is reserved by Google's front end
+        # on Cloud Run and never reaches the container.
+        http_get { path = "/health" }
         initial_delay_seconds = 2
         period_seconds        = 3
         failure_threshold     = 10

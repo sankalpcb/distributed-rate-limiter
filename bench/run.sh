@@ -64,10 +64,21 @@ log "service at ${URL}"
 
 # Wait for the new revision to actually serve before generating load, otherwise
 # the warmup measures a rollout.
+#
+# Note /health, not /healthz: Google's front end reserves /healthz on Cloud Run
+# and returns its own 404 without ever reaching the container, so a readiness
+# probe against it can never succeed.
+ready=0
 for _ in $(seq 1 30); do
-  if curl -sf -m 2 "${URL}/healthz" >/dev/null; then break; fi
+  if curl -sf -m 2 "${URL}/health" >/dev/null; then ready=1; break; fi
   sleep 2
 done
+if [[ "$ready" != "1" ]]; then
+  # Failing loudly matters here. Falling through to the measurement would
+  # produce a plausible-looking result for a service that never came up.
+  log "ERROR: ${SERVICE} did not become ready within 60s"
+  exit 1
+fi
 
 log "letting ${REPLICAS} replicas spin up"
 sleep 10

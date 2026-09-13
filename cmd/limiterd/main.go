@@ -165,7 +165,13 @@ func newServer(lim limiter.Limiter, syncer *limiter.LocalSync, cfg config, log *
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/allow", s.handleAllow)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	// Deliberately /health and not /healthz: Google's front end reserves
+	// /healthz on Cloud Run and answers it itself with a 404 before the
+	// request reaches the container. The failure is quiet and easy to
+	// misread -- the returned 404 is Google's HTML error page rather than
+	// Go's plain "404 page not found", which is the only clue that the
+	// request never arrived.
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("GET /stats", s.handleStats)

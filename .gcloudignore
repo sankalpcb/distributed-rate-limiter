@@ -1,0 +1,11 @@
+# Build context for `gcloud builds submit`. Without this, the provider plugins
+# under infra/.terraform (hundreds of MB) get uploaded on every build.
+.git/
+.github/
+bin/
+docs/
+bench/results/
+infra/
+*.tfstate
+*.tfstate.*
+.DS_Store
