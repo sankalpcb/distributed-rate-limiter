@@ -81,9 +81,41 @@ produces a wrong chart:
 
 ## Capacity: what the validation ladder established
 
-Run 2026-09-13 against 4 Cloud Run replicas (1 vCPU, 512Mi) and Memorystore
-Basic 1GB, generated from an n2-standard-4 in the same region. Raw JSON in
-`bench/results/`.
+Two configurations were measured. The second is the one the experiments are
+sized against; the first is kept because the difference between them is the
+point. Raw JSON in `bench/results/`.
+
+### 4 vCPU per replica, c3d-highcpu-16 generator (2026-09-14)
+
+20 replicas, Memorystore Basic 1GB, generator in the same region.
+
+| Offered | Achieved | p50 | p99 | Completed | Client-shed | Platform-shed | Verdict |
+|---:|---:|---:|---:|---:|---:|---:|:--|
+| 2,000 | 2,000 | 8.74 ms | 14.60 ms | 59,998 | 0 | 0 | VALID |
+| 4,000 | 3,999 | 8.38 ms | 14.74 ms | 119,996 | 0 | 0 | VALID |
+| 6,000 | 5,998 | 8.27 ms | 14.19 ms | 179,994 | 0 | 0 | VALID |
+| 8,000 | 7,998 | 8.34 ms | 14.86 ms | 239,992 | 0 | 0 | VALID |
+| 12,000 | 11,997 | 8.07 ms | **14.33 ms** | 359,988 | 0 | 0 | VALID |
+| 16,000 | 15,567 | 601 ms | 1,218 ms | 479,984 | 74,450 | 0 | INVALID |
+
+**12,000 RPS clean, with latency flat across the whole range.** p99 moves from
+14.60ms at 2,000 to 14.33ms at 12,000 -- a 6x increase in load with no tail
+degradation at all, and marginally better at the top as connection pools stay
+warm.
+
+**The service was never saturated.** `platform-shed` is zero on every rung
+including 16,000, where the service admitted 479,961 of the 479,984 requests
+that reached it. The 16,000 failure is the generator: 74,450 shed, p50 blown
+out to 601ms by its own queueing. The service's true ceiling is therefore
+somewhere above 15,500 RPS and remains unmeasured -- finding it needs more
+than one load generator.
+
+This is why `PER_REPLICA_RPS` is set to 600 and used undiscounted: 600 is a
+proven-healthy figure, not an extrapolation from a collapse point.
+
+### 1 vCPU per replica, n2-standard-4 generator (2026-09-13)
+
+The original configuration, kept for contrast.
 
 | Offered | Achieved | client p50 | client p99 | server p50 | 200s | 429s | Failed | Client-shed | Verdict |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|:--|
@@ -94,13 +126,19 @@ Basic 1GB, generated from an n2-standard-4 in the same region. Raw JSON in
 | 8,000 | 666 | 13,279 ms | 19,497 ms | 14 us | 7,153 | 1,980 | 37,763 | 220,541 | INVALID |
 | 12,000 | 10,093 | 7,258 ms | 15,254 ms | 15 us | 4,990 | 52 | 61,059 | 355,431 | INVALID |
 
-**The usable ceiling is about 2,000 RPS in this configuration.** Only the 2,000
-rungs are clean, and they reproduced across two separate ladders.
+**The usable ceiling was about 2,000 RPS**, six times lower than after the
+change to 4 vCPU and a larger generator.
 
-**Consequence for the experiment plan:** E1 as written offers 8,000 RPS against
-4 replicas, which is roughly 4x past where this setup collapses. Before running
-it, either raise the replica count (16-32) or the CPU per instance, and enlarge
-the load generator -- at 8,000 offered the *client* achieved only 666 RPS.
+Both ends were undersized, and the sequence of fixes matters more than either
+number. Raising the service from 1 to 4 vCPU eliminated platform shedding
+entirely -- `platform-shed` went from 30,975 at 4,000 RPS to zero -- but the
+runs still failed, now with tens of thousands of requests shed *client*-side.
+Only after replacing the n2-standard-4 generator with a c3d-highcpu-16 did the
+ladder come back clean.
+
+Without the `platform-shed` / `client-shed` split, both configurations would
+have reported "4,000 RPS, INVALID" identically, with nothing to indicate that
+the first fix had worked or which end to fix next.
 
 ### The limiter was never the bottleneck
 

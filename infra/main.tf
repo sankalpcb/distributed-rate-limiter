@@ -260,6 +260,9 @@ resource "google_compute_instance" "loadgen" {
     initialize_params {
       image = "debian-cloud/debian-12"
       size  = 20
+      # Explicit because the default is pd-standard, which the C3/C3D/C4
+      # families reject outright -- see var.loadgen_disk_type.
+      type = var.loadgen_disk_type
     }
   }
 

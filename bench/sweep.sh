@@ -17,15 +17,26 @@ REPEATS=${REPEATS:-3}   # methodology: three runs per configuration, report spre
 
 # Capacity model, derived from the validation ladder rather than guessed.
 #
-# Measured 2026-09-13 (docs/benchmarks.md): 4 replicas of 1 vCPU sustained
-# 2,000 RPS cleanly, and by 4,000 RPS Cloud Run was shedding 26% of requests
-# with a p99 of 3.5 seconds. That is roughly 500 RPS per replica at the point
-# of collapse, so planning uses 350 to leave headroom -- a benchmark run at the
-# edge of capacity measures the platform, not the limiter.
+# Measured 2026-09-14 at 4 vCPU per instance: 20 replicas carried 12,000 RPS
+# with zero platform shedding and a p99 of 14.33ms -- flat against the 14.60ms
+# measured at 2,000 RPS. That is 600 RPS per replica, and it is a FLOOR rather
+# than a ceiling: the service was never saturated. Even at 16,000 offered it
+# shed nothing; the load generator broke first.
 #
-# Re-run `./bench/sweep.sh validate` and update this if the instance size,
-# CPU allocation, or region changes. Every rate below is derived from it.
-PER_REPLICA_RPS=${PER_REPLICA_RPS:-350}
+# 600 is used directly because it is a proven-clean figure rather than an
+# extrapolation from a collapse point. The earlier 1-vCPU model had to discount
+# its number (500 measured, 350 planned) precisely because 500 was where things
+# fell over, not where they were healthy.
+#
+# Re-run `./bench/sweep.sh validate` and update this if service_cpu,
+# loadgen_machine_type, or the region changes. Every rate below derives from it.
+PER_REPLICA_RPS=${PER_REPLICA_RPS:-600}
+
+# The load generator's own ceiling, measured on the same run. Relevant because
+# no experiment can offer more than the client can produce: 12,000 was clean,
+# 16,000 shed 74,450 requests with p50 latency blown out to 601ms while the
+# service still absorbed everything it received.
+CLIENT_CEILING_RPS=${CLIENT_CEILING_RPS:-12000}
 
 # Cloud Run's max_instances is capped at 20 in infra/main.tf as a cost
 # guardrail, so no sweep may ask for more than that without raising
@@ -120,14 +131,15 @@ validate() {
 
 # E1: the results table. All three strategies, one load, one replica count.
 #
-# 8 replicas carry ~2,800 RPS with headroom, so 2,000 offered sits at about 70%
-# of capacity. The limit is deliberately below the offered rate -- otherwise
-# nothing is ever denied and the enforcement column has nothing to measure.
+# 8 replicas carry ~4,800 RPS, so 4,000 offered sits at about 83% of capacity --
+# and that capacity figure is a measured floor rather than an extrapolation, so
+# the real headroom is larger. The limit is deliberately below the offered rate;
+# otherwise nothing is ever denied and the enforcement column measures nothing.
 e1() {
   local replicas=8
   guard_replicas $replicas
-  local offered=2000
-  local limit=1200
+  local offered=4000
+  local limit=2500
   local cap; cap=$(capacity_for $replicas)
 
   log "E1: strategy comparison, ${offered} RPS offered / ${limit} limit, ${replicas} replicas (capacity ~${cap})"
@@ -146,12 +158,12 @@ e1() {
 # The offered rate is set by the SMALLEST replica count in the sweep, not the
 # largest. This is the constraint that is easy to miss: the load has to be
 # constant across rungs for the comparison to mean anything, and 2 replicas
-# carry only ~700 RPS. Offering more would overload the low-replica rungs and
+# carry only ~1,200 RPS. Offering more would overload the low-replica rungs and
 # leave Cloud Run shedding requests -- which the run would then report as
 # over-admission, producing a curve that looks like the predicted one and is
 # actually measuring platform saturation.
 #
-# 600 RPS is modest, but this experiment measures an error percentage, not
+# 1,000 RPS is modest, but this experiment measures an error percentage, not
 # throughput. Keeping R=2 buys a 15x spread in (R-1), which is what the
 # predicted bound scales with, and that matters far more to the chart than the
 # absolute request rate does. E1 carries the throughput story.
@@ -161,8 +173,8 @@ e2() {
   guard_replicas $replicas_sweep
 
   local smallest=2
-  local offered=600
-  local limit=400
+  local offered=1000
+  local limit=700
 
   log "E2: localsync over-admission vs sync interval x replica count"
   log "    ${offered} RPS offered / ${limit} limit -- bounded by R=${smallest} (capacity ~$(capacity_for $smallest))"
@@ -188,6 +200,11 @@ e2() {
 # The limit is held well above the offered rate throughout, so denials cannot
 # confound the latency reading; what is being measured is where the system
 # stops keeping up, not where the limiter starts saying no.
+#
+# Caveat worth stating in the writeup: this ramp stops at the CLIENT's ceiling,
+# not the service's. At 4 vCPU the service shed nothing even at 16,000 offered,
+# so its true ceiling is above 15,500 RPS and this experiment cannot reach it
+# with one load generator. E3 measures "at least this much", not "exactly this".
 e3() {
   local replicas=16
   guard_replicas $replicas
@@ -195,7 +212,7 @@ e3() {
 
   log "E3: throughput ceiling, ${replicas} replicas (planning capacity ~${cap})"
   for strategy in centralized localsync; do
-    for rps in 1000 2000 3000 4000 5000 6000 8000; do
+    for rps in 2000 4000 6000 8000 10000 12000; do
       STRATEGY=$strategy REPLICAS=$replicas OFFERED=$rps \
         LIMIT=$((rps * 10)) BURST=$((rps * 10)) \
         DURATION=60s WARMUP=15s \
@@ -236,7 +253,7 @@ Then re-enable it and watch recovery. Three runs to capture:
 
 Commands:
 
-  E4="REPLICAS=8 OFFERED=2000 LIMIT=1200 BURST=1200 DURATION=120s"
+  E4="REPLICAS=8 OFFERED=4000 LIMIT=2500 BURST=2500 DURATION=120s"
 
   env $E4 STRATEGY=centralized FAIL_MODE=closed LABEL=e4-central-closed ./bench/run.sh
   env $E4 STRATEGY=centralized FAIL_MODE=open   LABEL=e4-central-open   ./bench/run.sh

@@ -49,10 +49,14 @@ Everything below was run and observed, as distinct from the results above:
   the Lua atomicity property holding under real concurrency across replicas.
 - `centralized` measured **0.00%** sustained over-admission, the correctness
   property it is supposed to have.
-- A validation ladder established the capacity ceiling at roughly **2,000 RPS**
-  for 4 replicas of 1 vCPU. Server-side handler latency stayed at **14–17µs**
-  across every rung, including ones where clients saw 13-second latencies —
-  the limiter was never the bottleneck.
+- A validation ladder measured **12,000 RPS sustained** across 20 replicas of
+  4 vCPU, with **p99 flat at ~14.3ms** — unchanged from the p99 at 2,000 RPS,
+  a 6× increase in load with no tail degradation. Zero platform shedding at
+  every rung; the service was never saturated, so its real ceiling is higher
+  still.
+- Server-side handler latency stayed at **14–17µs** throughout, including runs
+  where clients saw multi-second latencies — the limiter was never the
+  bottleneck.
 
 ---
 

@@ -43,8 +43,27 @@ variable "max_instances" {
 
 variable "loadgen_machine_type" {
   type        = string
-  default     = "n2-standard-4"
-  description = "Load generator size. If `sweep.sh validate` shows the generator saturating before the service does, increase this rather than trusting the numbers."
+  default     = "c3d-highcpu-16"
+  description = <<-EOT
+    Load generator size. If `sweep.sh validate` shows the generator saturating
+    before the service does -- high client-shed with platform-shed at zero --
+    increase this rather than trusting the numbers.
+
+    c3d rather than c3: c3-highcpu-16 is not offered in us-central1 at all.
+    c3d is the same generation on AMD and is available in us-central1-a.
+    Check before changing this: gcloud compute machine-types list
+    --filter="zone=us-central1-a AND name~highcpu".
+  EOT
+}
+
+variable "loadgen_disk_type" {
+  type        = string
+  default     = "pd-balanced"
+  description = <<-EOT
+    Boot disk type for the load generator. Must not be pd-standard on C3/C3D/C4:
+    those families reject it, and the instance simply fails to create with an
+    error that names the disk rather than the machine family.
+  EOT
 }
 
 variable "ssh_source_ranges" {
