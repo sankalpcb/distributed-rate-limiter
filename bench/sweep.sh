@@ -225,9 +225,15 @@ e3() {
   done
 }
 
-# E4 is deliberately manual: it requires killing Redis partway through a run,
-# and scripting that around Memorystore is more fragile than doing it by hand.
+# E4 is automated in its own script, because the cut has to land at the same
+# offset and last the same duration in all three runs for them to be
+# comparable -- which hand-timing does not achieve.
 e4() {
+  exec ./bench/e4.sh
+}
+
+# The original manual instructions, kept for reference.
+e4_manual() {
   cat <<'GUIDE'
 E4 -- failure injection. Run each of these, and partway through each run
 (around 30s in) remove the service's access to Redis:
