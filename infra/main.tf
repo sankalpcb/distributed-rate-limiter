@@ -153,9 +153,18 @@ resource "google_cloud_run_v2_service" "limiterd" {
       }
 
       resources {
+        # Cloud Run constrains these together: 4 vCPU requires at least 2 GiB,
+        # and 8 vCPU at least 4 GiB. A mismatch is rejected at deploy time, not
+        # at plan time, so it surfaces as a failed rollout rather than a
+        # terraform error.
+        #
+        # Note that raising cpu raises the burn rate proportionally while
+        # replicas are pinned: 20 replicas x 4 vCPU is 80 vCPU billing for as
+        # long as min_instance_count holds them up. See the scale-down in
+        # bench/sweep.sh.
         limits = {
-          cpu    = "1"
-          memory = "512Mi"
+          cpu    = var.service_cpu
+          memory = var.service_memory
         }
       }
 

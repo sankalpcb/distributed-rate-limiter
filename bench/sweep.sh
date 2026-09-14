@@ -34,6 +34,30 @@ MAX_REPLICAS=20
 
 log() { printf '\n\033[1;34m### %s\033[0m\n' "$*" >&2; }
 
+# Release the pinned replicas on the way out, however we leave.
+#
+# run.sh sets min-instances == max-instances to hold the fleet size steady for
+# a measurement, and nothing puts it back. Those instances then bill around the
+# clock: at 4 vCPU, twenty pinned replicas is eighty vCPU running whether or not
+# any request arrives. A sweep that is interrupted -- Ctrl-C, a dropped SSH
+# session, a failed rung -- would otherwise leave them up indefinitely, which is
+# exactly how this project already lost sixteen hours of idle spend once.
+#
+# EXIT covers normal completion and errors; INT and TERM cover the interruptions.
+scale_down() {
+  local status=$?
+  echo >&2
+  log "releasing pinned replicas (min-instances -> 0)"
+  gcloud run services update "${SERVICE:-limiterd}" \
+    --region "${REGION:-us-central1}" \
+    --min-instances 0 \
+    --quiet >/dev/null 2>&1 \
+    && echo "    done -- the service now scales to zero" >&2 \
+    || echo "    WARNING: scale-down failed. Run it by hand or the fleet keeps billing." >&2
+  exit $status
+}
+trap scale_down EXIT INT TERM
+
 # capacity_for R -> the offered rate this replica count can carry with headroom.
 capacity_for() { echo $(( $1 * PER_REPLICA_RPS )); }
 

@@ -84,3 +84,20 @@ variable "budget_tracks_credits" {
   default     = true
   description = "When true the budget measures gross cost, before free credits are applied, so alerts fire as trial credits are consumed. Set false to measure only out-of-pocket spend."
 }
+
+variable "service_cpu" {
+  type        = string
+  default     = "4"
+  description = "vCPU per Cloud Run instance. Raising this raises per-replica throughput and the burn rate together. Re-run `./bench/sweep.sh validate` and update PER_REPLICA_RPS in bench/sweep.sh after changing it."
+}
+
+variable "service_memory" {
+  type        = string
+  default     = "2Gi"
+  description = "Memory per instance. Cloud Run requires at least 2Gi for 4 vCPU and 4Gi for 8 vCPU; a mismatch fails at deploy time, not at plan time."
+
+  validation {
+    condition     = can(regex("^[0-9]+(Mi|Gi)$", var.service_memory))
+    error_message = "service_memory must look like 512Mi or 2Gi."
+  }
+}
