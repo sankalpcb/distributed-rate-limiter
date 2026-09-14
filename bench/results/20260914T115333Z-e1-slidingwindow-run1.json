@@ -1,0 +1,39 @@
+{
+  "label": "e1-slidingwindow-run1",
+  "config": {
+    "duration": "1m30s",
+    "keys": "1",
+    "limit": "2500",
+    "max_inflight": "20000",
+    "rate": "4000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "15s"
+  },
+  "offered_rps": 4000,
+  "achieved_rps": 3999.621223082692,
+  "issued": 419996,
+  "completed": 359996,
+  "dropped_client_shed": 0,
+  "wall_seconds": 105.008943741,
+  "admitted": 224867,
+  "denied": 135129,
+  "failed": 0,
+  "shed_by_platform": 0,
+  "client_p50_ms": 9.2,
+  "client_p99_ms": 14.75,
+  "client_p999_ms": 36.38,
+  "client_max_ms": 312.83,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 2500,
+  "sustained_over_admission_pct": -0.057528089887640445,
+  "per_second_mean_over_admission_pct": 0.011235955056179775,
+  "per_second_max_over_admission_pct": 0.24,
+  "seconds_over_limit": 14,
+  "seconds_measured": 89,
+  "status_counts": {
+    "200": 224867,
+    "429": 135129
+  },
+  "valid": true
+}

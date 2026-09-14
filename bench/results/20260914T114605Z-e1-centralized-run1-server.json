@@ -1,0 +1,1 @@
+{"replica":"limiterd-00010-f86","strategy":"centralized","admitted":32087,"denied":20200,"errors":0,"sync_failures":0,"server_p50_us":1298,"server_p99_us":2451,"server_p999_us":7603,"server_max_us":24047}

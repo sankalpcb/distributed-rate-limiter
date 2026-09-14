@@ -1,0 +1,39 @@
+{
+  "label": "e1-localsync-run1",
+  "config": {
+    "duration": "1m30s",
+    "keys": "1",
+    "limit": "2500",
+    "max_inflight": "20000",
+    "rate": "4000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "15s"
+  },
+  "offered_rps": 4000,
+  "achieved_rps": 3999.687190018392,
+  "issued": 419996,
+  "completed": 359996,
+  "dropped_client_shed": 0,
+  "wall_seconds": 105.007211826,
+  "admitted": 257064,
+  "denied": 102932,
+  "failed": 0,
+  "shed_by_platform": 0,
+  "client_p50_ms": 8.14,
+  "client_p99_ms": 15.21,
+  "client_p999_ms": 31.81,
+  "client_max_ms": 702.46,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 2500,
+  "sustained_over_admission_pct": 14.253033707865168,
+  "per_second_mean_over_admission_pct": 14.253033707865171,
+  "per_second_max_over_admission_pct": 15.4,
+  "seconds_over_limit": 89,
+  "seconds_measured": 89,
+  "status_counts": {
+    "200": 257064,
+    "429": 102932
+  },
+  "valid": true
+}

@@ -232,8 +232,40 @@ event transiently inflates the fleet's total allowance.
 
 ## What surprised me
 
-*This section is the most valuable part of this document. Fill it in as things
-go wrong.*
+*This section is the most valuable part of this document.*
+
+### The exact strategy over-admitted by 17.4%, and only at scale
+
+E1's first run reported 17.44% sustained over-admission from `centralized` --
+the strategy whose entire purpose is exactness. It had measured 0.00% in unit
+tests, 0.00% against real Redis in integration tests, and 0.00% in a
+single-replica deployment on GCP.
+
+The Lua script clamped elapsed time at zero when a caller's clock lagged the
+stored refill mark, correctly refusing to mint tokens -- and then wrote that
+caller's earlier timestamp back anyway. The next caller measured elapsed from
+the older mark and refilled across an interval that had already been credited.
+
+Each alternation re-opens up to one skew's worth of refill, so the error scales
+with **skew divided by the gap between consecutive requests to a key**. At 2,000
+RPS that gap is about 500 microseconds, which is *smaller* than the
+sub-millisecond clock skew between Cloud Run instances, so a large fraction of
+every interval was credited twice. At the request rates used in every earlier
+test, the gap dwarfed the skew and the bug simply did not exist.
+
+The fix keeps the stored mark monotonic -- `max(stored, now)` -- so the bucket's
+view of time only moves forward and no interval is credited twice. After it,
+`centralized` measured −0.00%: 224,995 / 225,000 / 225,000 admitted against a
+theoretical 225,000.
+
+The regression test drives two replicas 2 ms apart at 500 µs intervals. Against
+the unfixed script it admits 4,000 where 1,010 is the ceiling — 296% over,
+every request allowed, because the bucket never advances at all.
+
+This is the project's strongest argument for benchmarking on real
+infrastructure. A correct unit suite, integration tests against real Redis, and
+a clean single-replica deployment all missed it. Eight replicas under sustained
+load found it in ninety seconds.
 
 ### The enforcement metric was measuring the wrong thing
 

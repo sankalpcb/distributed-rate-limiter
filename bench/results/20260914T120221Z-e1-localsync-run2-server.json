@@ -1,0 +1,1 @@
+{"replica":"limiterd-00017-gbx","strategy":"localsync","admitted":37824,"denied":14665,"errors":0,"sync_failures":0,"server_p50_us":20,"server_p99_us":127,"server_p999_us":377,"server_max_us":6411}

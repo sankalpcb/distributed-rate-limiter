@@ -11,20 +11,28 @@ same time. This measures what each one costs.
 
 ## Results
 
-> **Status: capacity established, strategy comparison not yet run.** The
-> validation ladder has been run on GCP and is reported in
-> [docs/benchmarks.md](docs/benchmarks.md#capacity-what-the-validation-ladder-established).
-> E1 and E2 below are still placeholders.
+> **Status: E1 complete.** E2–E4 still to run.
 
 ### E1 — Strategy comparison
 
-8000 RPS offered against a 5000/sec limit, 4 replicas, 3 runs per configuration.
+4,000 RPS offered against a 2,500/sec limit, 8 replicas × 4 vCPU, 3 runs each,
+~360,000 requests per run. All runs VALID — zero failures, zero shedding.
 
-| Strategy | p50 | p99 | p999 | Sustained over-admission | Redis ops/sec |
-|---|---|---|---|---|---|
-| `centralized` | — | — | — | — | — |
-| `slidingwindow` | — | — | — | — | — |
-| `localsync` (100ms) | — | — | — | — | — |
+| Strategy | client p50 | client p99 | **server p50** | **server p99** | Sustained over-admission | Redis ops/s |
+|---|---:|---:|---:|---:|---:|---:|
+| `centralized` | 9.38 ms | 15.28 ms | **1,133 µs** | 1,859 µs | **−0.00%** | 3,428 |
+| `slidingwindow` | 9.04 ms | 16.02 ms | 760 µs | 2,243 µs | −0.06% | 3,428 |
+| `localsync` (100ms) | 8.37 ms | 15.01 ms | **19 µs** | **117 µs** | **+14.25%** | ~80 |
+
+**`localsync` answers 60× faster at p50 and 16× at p99, and over-admits by
+14.25%** — while putting 43× less load on Redis. That is the tradeoff this
+project exists to measure.
+
+Note what the client columns do *not* show: all three strategies land within
+noise of each other at ~9 ms, because network and platform overhead swamp the
+limiter entirely. Measuring only at the client would have concluded the
+strategies are indistinguishable. See
+[docs/benchmarks.md](docs/benchmarks.md#e1--strategy-comparison).
 
 ### E2 — Enforcement error vs sync interval and replica count
 
