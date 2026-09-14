@@ -32,11 +32,28 @@ if tokens == nil or ts == nil then
   ts = now
 end
 
--- Clamp elapsed at zero: replica clocks are not perfectly aligned, and a
--- backwards jump must never mint tokens.
+-- Replica clocks are not aligned, so now may be behind the stored mark.
+-- Two things have to be true for that to be harmless, and the second is easy
+-- to miss:
+--
+--   1. A backwards jump must not mint tokens -- hence the clamp.
+--   2. The stored mark must never move BACKWARDS. If a lagging replica writes
+--      its own earlier timestamp, the next caller measures elapsed from that
+--      older mark and refills across an interval already credited. Each
+--      alternation re-opens up to one skew's worth of refill, so the error
+--      scales with skew divided by the gap between requests. At a few
+--      thousand RPS that gap is smaller than the skew and the bucket stops
+--      advancing. Measured on GCP: 17.4% over-admission from the strategy
+--      whose entire purpose is exactness.
+--
+-- Keeping the mark monotonic makes the bucket's view of time forward-only, so
+-- no interval is ever credited twice.
 local elapsed = now - ts
 if elapsed < 0 then elapsed = 0 end
 tokens = math.min(burst, tokens + (elapsed / 1000.0) * rate)
+
+local mark = now
+if ts > mark then mark = ts end
 
 local allowed = 0
 if tokens >= cost then
@@ -44,7 +61,7 @@ if tokens >= cost then
   allowed = 1
 end
 
-redis.call('HMSET', KEYS[1], 'tokens', tokens, 'ts', now)
+redis.call('HMSET', KEYS[1], 'tokens', tokens, 'ts', mark)
 redis.call('PEXPIRE', KEYS[1], ttl)
 
 local retry = 0

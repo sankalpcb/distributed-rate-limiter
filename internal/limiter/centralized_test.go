@@ -155,3 +155,55 @@ func TestCentralized_FailModes(t *testing.T) {
 		})
 	}
 }
+
+// Replicas do not share a clock. Cloud Run instances are NTP-synced to within
+// a millisecond or so, which sounds negligible until you notice that at a few
+// thousand requests per second the gap between consecutive requests to one key
+// is smaller than the skew itself.
+//
+// The bucket stores the timestamp of the last refill. If a caller whose clock
+// lags writes that timestamp backwards, the next caller computes its elapsed
+// time from the older mark and refills for an interval that was already
+// credited. Each alternation re-opens up to `skew` worth of refill, so the
+// inflation scales with skew divided by the inter-request interval -- which is
+// why this is invisible at low rates and severe at high ones.
+//
+// Measured on GCP before the fix: 17.4% sustained over-admission from the
+// strategy whose entire purpose is exact enforcement.
+func TestCentralized_SkewedReplicaClocksDoNotMintTokens(t *testing.T) {
+	const (
+		rate    = 1000.0                 // tokens per second
+		burst   = int64(10)              //
+		skew    = 2 * time.Millisecond   // how far replica B lags replica A
+		step    = 500 * time.Microsecond // real time between consecutive requests
+		pairs   = 2000                   // 2000 pairs x 500us = 1s of real time
+		elapsed = time.Duration(pairs) * step
+	)
+
+	c := NewCentralized(newTestRedis(t), Config{Rate: rate, Burst: burst, TTL: time.Minute}, FailClosed)
+	ctx := context.Background()
+
+	admitted := 0
+	for i := range pairs {
+		at := base.Add(time.Duration(i) * step)
+
+		// Replica A: clock correct.
+		if d, err := c.Allow(ctx, "k", 1, at); err == nil && d.Allowed {
+			admitted++
+		}
+		// Replica B: same instant, clock lagging.
+		if d, err := c.Allow(ctx, "k", 1, at.Add(-skew)); err == nil && d.Allowed {
+			admitted++
+		}
+	}
+
+	// Over one second of real time a bucket refilling at 1000/s, starting full
+	// at 10, can admit at most 1010 however many replicas ask.
+	maxAdmissible := int(rate*elapsed.Seconds()) + int(burst)
+	if admitted > maxAdmissible {
+		overPct := float64(admitted-maxAdmissible) / float64(maxAdmissible) * 100
+		t.Fatalf("admitted %d over %v, want at most %d (over-admitted by %.1f%%): "+
+			"a lagging replica must not move the bucket's timestamp backwards",
+			admitted, elapsed, maxAdmissible, overPct)
+	}
+}
