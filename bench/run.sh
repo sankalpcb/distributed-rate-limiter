@@ -10,16 +10,19 @@
 set -euo pipefail
 
 STRATEGY=${STRATEGY:-centralized}
-REPLICAS=${REPLICAS:-4}
+REPLICAS=${REPLICAS:-8}
 
 # Two different rates, easily confused:
 #   OFFERED -- what the generator sends, requests/sec.
 #   LIMIT   -- what the limiter permits, per key per second.
 # Interesting runs have OFFERED > LIMIT; otherwise nothing is ever denied and
 # the enforcement measurement has nothing to measure.
-OFFERED=${OFFERED:-8000}
-LIMIT=${LIMIT:-5000}
-BURST=${BURST:-5000}
+# Defaults derived from the validation ladder (docs/benchmarks.md), not chosen
+# for roundness: 4 replicas of 1 vCPU collapse somewhere under 4,000 RPS, so a
+# default of 8,000 would have every unqualified run measuring platform overload.
+OFFERED=${OFFERED:-1200}
+LIMIT=${LIMIT:-800}
+BURST=${BURST:-800}
 WINDOW=${WINDOW:-1s}
 SYNC_INTERVAL=${SYNC_INTERVAL:-100ms}
 FAIL_MODE=${FAIL_MODE:-closed}

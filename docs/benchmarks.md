@@ -118,7 +118,11 @@ shows the limiter answering in microseconds the entire time.
 
 ### E1 — Strategy comparison
 
-8000 RPS offered against a 5000/sec limit, 4 replicas, 3 runs each.
+2,000 RPS offered against a 1,200/sec limit, 8 replicas, 3 runs each.
+
+Sized from the capacity table above: 8 replicas carry ~2,800 RPS with headroom,
+so this sits at roughly 70% of capacity. The limit is below the offered rate on
+purpose, or nothing is ever denied and the enforcement column measures nothing.
 
 | Strategy | p50 | p99 | p999 | Sustained over-admission | Redis ops/sec |
 |---|---|---|---|---|---|
@@ -128,8 +132,19 @@ shows the limiter answering in microseconds the entire time.
 
 ### E2 — Enforcement error vs sync interval and replica count
 
-`localsync`, sweeping sync interval `{20ms … 1s}` across replica counts
-`{2, 4, 8, 16}`.
+`localsync` at 600 RPS against a 400/sec limit, sweeping sync interval
+`{20ms … 1s}` across replica counts `{2, 4, 8, 16}`.
+
+The rate is set by the *smallest* replica count, not the largest. Load must be
+constant across rungs for the comparison to hold, and 2 replicas carry only
+~700 RPS — offering more would saturate the low-replica rungs, and the platform
+shedding that followed would be reported as over-admission. That would produce
+a curve resembling the predicted one while actually measuring Cloud Run running
+out of capacity.
+
+600 RPS is modest, but this experiment reports an error percentage rather than
+throughput, and keeping `R=2` buys a 15× spread in `(R−1)` — which is what the
+bound scales with. E1 carries the throughput story.
 
 **Predict before measuring.** The bound in [design.md](design.md#localsync)
 says excess per interval is at most `(R − 1) × A`. Write down the expected
@@ -146,7 +161,13 @@ so than a curve that matches.
 
 ### E3 — Throughput ceiling
 
-Ramp offered load until `centralized` p99 knees over and Redis saturates.
+16 replicas, ramping `{1k, 2k, 3k, 4k, 5k, 6k, 8k}` with the limit held at 10×
+the offered rate so denials cannot confound the latency reading.
+
+This is the one experiment expected to end in INVALID runs — finding a ceiling
+means crossing it. The steps bracket the measured collapse point; the original
+ladder jumped 2k → 30k, which established only that everything above the first
+rung was broken.
 
 | Strategy | Max sustained RPS | Limiting factor |
 |---|---|---|

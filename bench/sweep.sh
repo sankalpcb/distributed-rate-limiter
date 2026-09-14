@@ -15,39 +15,101 @@ cd "$(dirname "$0")/.."
 
 REPEATS=${REPEATS:-3}   # methodology: three runs per configuration, report spread
 
+# Capacity model, derived from the validation ladder rather than guessed.
+#
+# Measured 2026-09-13 (docs/benchmarks.md): 4 replicas of 1 vCPU sustained
+# 2,000 RPS cleanly, and by 4,000 RPS Cloud Run was shedding 26% of requests
+# with a p99 of 3.5 seconds. That is roughly 500 RPS per replica at the point
+# of collapse, so planning uses 350 to leave headroom -- a benchmark run at the
+# edge of capacity measures the platform, not the limiter.
+#
+# Re-run `./bench/sweep.sh validate` and update this if the instance size,
+# CPU allocation, or region changes. Every rate below is derived from it.
+PER_REPLICA_RPS=${PER_REPLICA_RPS:-350}
+
+# Cloud Run's max_instances is capped at 20 in infra/main.tf as a cost
+# guardrail, so no sweep may ask for more than that without raising
+# var.max_instances first.
+MAX_REPLICAS=20
+
 log() { printf '\n\033[1;34m### %s\033[0m\n' "$*" >&2; }
+
+# capacity_for R -> the offered rate this replica count can carry with headroom.
+capacity_for() { echo $(( $1 * PER_REPLICA_RPS )); }
+
+# guard_replicas refuses a sweep that would exceed the instance cap, rather
+# than letting Cloud Run silently serve fewer replicas than the run claims --
+# which would misattribute the resulting over-admission to the sync interval.
+guard_replicas() {
+  local r
+  for r in "$@"; do
+    if (( r > MAX_REPLICAS )); then
+      echo "ERROR: replica count $r exceeds max_instances=$MAX_REPLICAS in infra/main.tf." >&2
+      echo "       Raise var.max_instances and re-apply, or lower the sweep." >&2
+      exit 1
+    fi
+  done
+}
 
 # validate is the gate described in docs/design.md section 12: confirm the load
 # generator can actually produce the offered rate before trusting any result.
 # Runs against /health semantics -- a limit high enough that nothing is denied,
 # so the only thing under test is whether the client keeps up.
 validate() {
+  # Run against the MAXIMUM replica count, not a typical one.
+  #
+  # The first version of this ladder used 4 replicas, and its results were
+  # ambiguous exactly because of that: when a rung failed there was no way to
+  # tell whether the generator had run out of capacity or the service had. A
+  # client-capacity probe has to remove the service as a candidate bottleneck,
+  # which means giving it every replica available.
+  #
+  # localsync keeps Redis off the request path, so Memorystore is not in the
+  # picture either. The limit is 10x the offered rate so nothing is ever
+  # denied. What remains under test is the client.
+  local replicas=$MAX_REPLICAS
+  guard_replicas $replicas
+
   log "VALIDATION: can the generator sustain its offered rate?"
-  # Deploy once, then reuse it. This ladder tests the CLIENT, not the service
-  # configuration, and a Cloud Run redeploy between rungs costs ~90s each for
-  # no change to what is being measured.
+  log "    ${replicas} replicas, so a failure points at the client, not the service"
+
+  # Deploy once, then reuse it. A Cloud Run redeploy between rungs costs ~90s
+  # and changes nothing being measured.
   local first=1
   for rps in ${VALIDATE_RATES:-2000 4000 6000 8000 12000}; do
     log "offering ${rps} RPS"
     OFFERED=$rps LIMIT=$((rps * 10)) BURST=$((rps * 10)) \
-      STRATEGY=localsync REPLICAS=4 DURATION=30s WARMUP=10s \
+      STRATEGY=localsync REPLICAS=$replicas DURATION=30s WARMUP=10s \
       SKIP_DEPLOY=$([[ $first == 1 ]] && echo 0 || echo 1) \
       LABEL="validate-${rps}rps" ./bench/run.sh || true
     first=0
   done
   echo
-  echo "Read the 'achieved' line and the verdict for each run. The highest rate"
-  echo "that still reports VALID is the ceiling for every later experiment."
-  echo "If that ceiling is below your intended load, use a bigger loadgen VM"
-  echo "before going further -- every subsequent number depends on it."
+  echo "The highest rung still reporting VALID is the client's ceiling."
+  echo
+  echo "Check 'shed_by_platform' on the failing rungs. If it is high, the"
+  echo "service ran out of capacity before the client did, and this ladder has"
+  echo "not found the client's limit -- raise max_instances and re-run."
+  echo "Otherwise the client is the constraint: use a larger loadgen VM"
+  echo "(machine_type in infra/variables.tf) before trusting any later number."
 }
 
 # E1: the results table. All three strategies, one load, one replica count.
+#
+# 8 replicas carry ~2,800 RPS with headroom, so 2,000 offered sits at about 70%
+# of capacity. The limit is deliberately below the offered rate -- otherwise
+# nothing is ever denied and the enforcement column has nothing to measure.
 e1() {
-  log "E1: strategy comparison at 8000 RPS offered / 5000 limit, 4 replicas"
+  local replicas=8
+  guard_replicas $replicas
+  local offered=2000
+  local limit=1200
+  local cap; cap=$(capacity_for $replicas)
+
+  log "E1: strategy comparison, ${offered} RPS offered / ${limit} limit, ${replicas} replicas (capacity ~${cap})"
   for strategy in centralized slidingwindow localsync; do
     for run in $(seq 1 "$REPEATS"); do
-      STRATEGY=$strategy REPLICAS=4 OFFERED=8000 LIMIT=5000 BURST=5000 \
+      STRATEGY=$strategy REPLICAS=$replicas OFFERED=$offered LIMIT=$limit BURST=$limit \
         SYNC_INTERVAL=100ms DURATION=90s WARMUP=15s \
         LABEL="e1-${strategy}-run${run}" ./bench/run.sh
     done
@@ -56,31 +118,69 @@ e1() {
 
 # E2: the money chart. Over-admission as a function of sync interval and
 # replica count -- the two knobs the bound in docs/design.md predicts.
+#
+# The offered rate is set by the SMALLEST replica count in the sweep, not the
+# largest. This is the constraint that is easy to miss: the load has to be
+# constant across rungs for the comparison to mean anything, and 2 replicas
+# carry only ~700 RPS. Offering more would overload the low-replica rungs and
+# leave Cloud Run shedding requests -- which the run would then report as
+# over-admission, producing a curve that looks like the predicted one and is
+# actually measuring platform saturation.
+#
+# 600 RPS is modest, but this experiment measures an error percentage, not
+# throughput. Keeping R=2 buys a 15x spread in (R-1), which is what the
+# predicted bound scales with, and that matters far more to the chart than the
+# absolute request rate does. E1 carries the throughput story.
 e2() {
+  local replicas_sweep="2 4 8 16"
+  # shellcheck disable=SC2086
+  guard_replicas $replicas_sweep
+
+  local smallest=2
+  local offered=600
+  local limit=400
+
   log "E2: localsync over-admission vs sync interval x replica count"
-  for replicas in 2 4 8 16; do
+  log "    ${offered} RPS offered / ${limit} limit -- bounded by R=${smallest} (capacity ~$(capacity_for $smallest))"
+  for replicas in $replicas_sweep; do
     for interval in 20ms 50ms 100ms 250ms 500ms 1s; do
       for run in $(seq 1 "$REPEATS"); do
         STRATEGY=localsync REPLICAS=$replicas SYNC_INTERVAL=$interval \
-          OFFERED=8000 LIMIT=5000 BURST=5000 DURATION=60s WARMUP=15s \
+          OFFERED=$offered LIMIT=$limit BURST=$limit DURATION=60s WARMUP=15s \
           LABEL="e2-r${replicas}-sync${interval}-run${run}" ./bench/run.sh
       done
     done
   done
 }
 
-# E3: where it breaks. Ramp until the centralized strategy's p99 knees over.
+# E3: where it breaks. Ramp until p99 knees over.
+#
+# This is the one experiment that is SUPPOSED to end in INVALID runs -- finding
+# the ceiling means crossing it. The steps bracket the measured collapse point
+# rather than starting far beyond it: the old ladder opened at 2,000 and jumped
+# to 30,000, which told you only that everything above the first rung was
+# broken. Finer steps near the knee are what produce a capacity number.
+#
+# The limit is held well above the offered rate throughout, so denials cannot
+# confound the latency reading; what is being measured is where the system
+# stops keeping up, not where the limiter starts saying no.
 e3() {
-  log "E3: throughput ceiling"
+  local replicas=16
+  guard_replicas $replicas
+  local cap; cap=$(capacity_for $replicas)
+
+  log "E3: throughput ceiling, ${replicas} replicas (planning capacity ~${cap})"
   for strategy in centralized localsync; do
-    for rps in 2000 5000 10000 15000 20000 30000; do
-      STRATEGY=$strategy REPLICAS=8 OFFERED=$rps LIMIT=$((rps * 2)) BURST=$((rps * 2)) \
+    for rps in 1000 2000 3000 4000 5000 6000 8000; do
+      STRATEGY=$strategy REPLICAS=$replicas OFFERED=$rps \
+        LIMIT=$((rps * 10)) BURST=$((rps * 10)) \
         DURATION=60s WARMUP=15s \
         LABEL="e3-${strategy}-${rps}rps" ./bench/run.sh || {
-          echo "run failed at ${rps} RPS for ${strategy}; treating as the ceiling" >&2
+          echo "run failed outright at ${rps} RPS for ${strategy}; treating as the ceiling" >&2
           break
         }
     done
+    echo "For ${strategy}: the ceiling is the highest rung still reporting VALID." >&2
   done
 }
 
@@ -112,9 +212,16 @@ Then re-enable it and watch recovery. Three runs to capture:
 
 Commands:
 
-  STRATEGY=centralized FAIL_MODE=closed DURATION=120s LABEL=e4-central-closed ./bench/run.sh
-  STRATEGY=centralized FAIL_MODE=open   DURATION=120s LABEL=e4-central-open   ./bench/run.sh
-  STRATEGY=localsync                    DURATION=120s LABEL=e4-localsync      ./bench/run.sh
+  E4="REPLICAS=8 OFFERED=2000 LIMIT=1200 BURST=1200 DURATION=120s"
+
+  env $E4 STRATEGY=centralized FAIL_MODE=closed LABEL=e4-central-closed ./bench/run.sh
+  env $E4 STRATEGY=centralized FAIL_MODE=open   LABEL=e4-central-open   ./bench/run.sh
+  env $E4 STRATEGY=localsync                    LABEL=e4-localsync      ./bench/run.sh
+
+These match E1's load so the failure behaviour is comparable against the
+healthy baseline. Anything heavier would have Cloud Run shedding requests
+before Redis is even touched, which would muddy the very contrast the
+experiment exists to show.
 
 The contrast between run 3 and runs 1-2 is the strongest result in the
 project: localsync is not merely faster, it is available when Redis is not,
