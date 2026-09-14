@@ -1,0 +1,1 @@
+{"replica":"limiterd-00021-ltp","strategy":"localsync","admitted":26935,"denied":10633,"errors":0,"sync_failures":0,"server_p50_us":22,"server_p99_us":127,"server_p999_us":459,"server_max_us":15967}

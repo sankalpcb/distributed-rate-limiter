@@ -1,0 +1,1 @@
+{"replica":"limiterd-00099-dq6","strategy":"localsync","admitted":18681,"denied":0,"errors":0,"sync_failures":0,"server_p50_us":23,"server_p99_us":111,"server_p999_us":733,"server_max_us":5027}

@@ -1,0 +1,1 @@
+{"replica":"limiterd-00033-qfc","strategy":"localsync","admitted":37419,"denied":126,"errors":0,"sync_failures":0,"server_p50_us":17,"server_p99_us":53,"server_p999_us":131,"server_max_us":1966}

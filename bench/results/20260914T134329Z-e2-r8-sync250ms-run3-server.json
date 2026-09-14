@@ -1,0 +1,1 @@
+{"replica":"limiterd-00067-mtx","strategy":"localsync","admitted":9235,"denied":129,"errors":0,"sync_failures":0,"server_p50_us":21,"server_p99_us":73,"server_p999_us":1581,"server_max_us":6639}

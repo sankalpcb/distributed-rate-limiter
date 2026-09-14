@@ -1,0 +1,1 @@
+{"replica":"limiterd-00074-vq7","strategy":"localsync","admitted":9169,"denied":3574,"errors":0,"sync_failures":0,"server_p50_us":24,"server_p99_us":105,"server_p999_us":308,"server_max_us":13039}

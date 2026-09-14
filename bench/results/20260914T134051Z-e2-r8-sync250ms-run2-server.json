@@ -1,0 +1,1 @@
+{"replica":"limiterd-00066-rln","strategy":"localsync","admitted":7582,"denied":1797,"errors":0,"sync_failures":0,"server_p50_us":19,"server_p99_us":72,"server_p999_us":227,"server_max_us":667}

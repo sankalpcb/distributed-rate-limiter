@@ -1,0 +1,1 @@
+{"replica":"limiterd-00034-xpv","strategy":"localsync","admitted":35019,"denied":2409,"errors":0,"sync_failures":0,"server_p50_us":24,"server_p99_us":200,"server_p999_us":933,"server_max_us":9775}

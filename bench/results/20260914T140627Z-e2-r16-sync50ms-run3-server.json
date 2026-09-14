@@ -1,0 +1,1 @@
+{"replica":"limiterd-00079-qlz","strategy":"localsync","admitted":6970,"denied":2360,"errors":0,"sync_failures":0,"server_p50_us":22,"server_p99_us":80,"server_p999_us":276,"server_max_us":1810}

@@ -1,0 +1,1 @@
+{"replica":"limiterd-00031-hfm","strategy":"localsync","admitted":33191,"denied":4274,"errors":0,"sync_failures":0,"server_p50_us":16,"server_p99_us":63,"server_p999_us":165,"server_max_us":4931}

@@ -1,0 +1,42 @@
+{
+  "label": "e3-centralized-2000rps",
+  "config": {
+    "duration": "1m0s",
+    "keys": "1",
+    "limit": "20000",
+    "max_inflight": "20000",
+    "rate": "2000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "15s"
+  },
+  "offered_rps": 2000,
+  "achieved_rps": 1999.7451871776534,
+  "issued": 149998,
+  "completed": 119998,
+  "dropped_client_shed": 0,
+  "wall_seconds": 75.008556571,
+  "admitted": 119993,
+  "denied": 0,
+  "failed": 5,
+  "shed_by_platform": 0,
+  "client_p50_ms": 9.72,
+  "client_p99_ms": 17.39,
+  "client_p999_ms": 38.24,
+  "client_max_ms": 413.18,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 20000,
+  "sustained_over_admission_pct": -90.00042372881356,
+  "per_second_mean_over_admission_pct": 0,
+  "per_second_max_over_admission_pct": 0,
+  "seconds_over_limit": 0,
+  "seconds_measured": 59,
+  "status_counts": {
+    "200": 119993,
+    "500": 5
+  },
+  "valid": true,
+  "warnings": [
+    "5 requests failed (0.00% of completed)"
+  ]
+}

@@ -190,27 +190,88 @@ curve first, then plot measured against predicted. If they disagree, finding
 out why is the most valuable thing that can happen in this project — far more
 so than a curve that matches.
 
-| Replicas \ Sync | 20ms | 50ms | 100ms | 250ms | 500ms | 1s |
-|---|---|---|---|---|---|---|
-| 2 | — | — | — | — | — | — |
-| 4 | — | — | — | — | — | — |
-| 8 | — | — | — | — | — | — |
-| 16 | — | — | — | — | — | — |
+**Run 2026-09-14.** 72 runs, 3 per cell. All VALID; **zero platform shedding
+across every run**, so the surface measures sync drift and not Cloud Run
+saturation.
+
+| R \ sync | 20ms | 50ms | 100ms | 250ms | 500ms | 1s |
+|---:|---:|---:|---:|---:|---:|---:|
+| **2** | 1.54% | 2.81% | 7.22% | 18.04% | 32.29% | 39.26% |
+| **4** | 1.99% | 5.54% | 9.70% | 26.78% | 37.96% | 31.11% |
+| **8** | 2.65% | 6.32% | 12.48% | 31.16% | 40.92% | 42.83% |
+| **16** | 2.68% | 6.30% | 12.64% | 31.10% | 41.59% | **42.86%** |
+
+#### The predicted bound does not govern
+
+If error scaled with `(R−1)`, dividing each cell by `(R−1)` would flatten the
+columns. It does not: that ratio falls roughly eightfold from R=2 to R=16.
+
+| R \ sync | 20ms | 50ms | 100ms | 250ms | 500ms | 1s |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 1.54 | 2.81 | 7.22 | 18.04 | 32.29 | 39.26 |
+| 4 | 0.66 | 1.85 | 3.23 | 8.93 | 12.65 | 10.37 |
+| 8 | 0.38 | 0.90 | 1.78 | 4.45 | 5.85 | 6.12 |
+| 16 | 0.18 | 0.42 | 0.84 | 2.07 | 2.77 | 2.86 |
+
+`(R−1) × A` is a legitimate upper bound but a badly loose one, because it
+assumes every replica independently exhausts the full remaining budget.
+
+**What actually happens is that error saturates in R.** R=8 and R=16 are
+indistinguishable at every interval: 2.65/2.68, 6.32/6.30, 12.48/12.64,
+31.16/31.10. Total offered load is fixed, so doubling the replica count halves
+each replica's share of it, and the fleet's total unsynced admissions stay
+roughly constant at `admission_rate × sync_interval` however many replicas
+divide it. The governing variable is the interval, not the replica count.
+
+That is a better model than the one the design predicted, and it was arrived at
+by measuring rather than by reasoning.
+
+#### The top-right of the table is censored
+
+Offering 1,000 RPS against a 700/sec limit caps observable over-admission at
+`(1000 − 700) / 700 = 42.86%`. R=16 at a 1s interval measures **42.86%** --
+exactly that ceiling, and a property of the experiment rather than of the
+limiter.
+
+Everything at 250ms and above is pressed against this wall, which is also why
+the run-to-run spread explodes there: up to 29.6 percentage points at R=4/1s,
+against under 1 point everywhere below 100ms. **Only the 20–100ms region should
+be read as measurement.** Extending the usable range needs a higher offered
+rate relative to the limit, which in turn needs more replicas to stay clear of
+platform saturation.
 
 ### E3 — Throughput ceiling
 
-16 replicas, ramping `{1k, 2k, 3k, 4k, 5k, 6k, 8k}` with the limit held at 10×
-the offered rate so denials cannot confound the latency reading.
+**Run 2026-09-14.** 16 replicas, limit held at 10× the offered rate so denials
+cannot confound the latency reading.
 
-This is the one experiment expected to end in INVALID runs — finding a ceiling
-means crossing it. The steps bracket the measured collapse point; the original
-ladder jumped 2k → 30k, which established only that everything above the first
-rung was broken.
+| Offered | `centralized` server p50 | `localsync` server p50 | Verdict |
+|---:|---:|---:|:--|
+| 2,000 | 1,104 µs | 23 µs | VALID |
+| 4,000 | 462 µs | 18 µs | VALID |
+| 6,000 | 1,421 µs | 13 µs | VALID |
+| 8,000 | **59,871 µs** | **11 µs** | INVALID |
+| 10,000 | 54,495 µs | 13 µs | INVALID |
+| 12,000 | 70,399 µs | 12 µs | INVALID |
 
-| Strategy | Max sustained RPS | Limiting factor |
-|---|---|---|
-| `centralized` | — | — |
-| `localsync` | — | — |
+**`centralized` knees 42× between 6,000 and 8,000 RPS; `localsync` shows no
+knee at all.** This is Redis's throughput becoming the fleet's throughput,
+which is the structural argument for keeping the shared store off the request
+path -- now visible in the data rather than only in the design doc.
+
+Two caveats, both of which should be stated wherever this result is quoted:
+
+**The runs above 6,000 are INVALID on client-side gates**, so the divergence is
+strongly suggestive rather than conclusive. The server-side telemetry is still
+meaningful -- it reports what the service did with the requests that reached it
+-- but the experiment did not cleanly isolate the service.
+
+**The 6,000 ceiling contradicts the validation ladder**, which sustained 12,000
+RPS cleanly on 20 replicas. The likely cause is warm-up: E3 redeploys before
+every rung and waits only 10 seconds, whereas the ladder reused a single warm
+deployment across rungs. Cold instances cannot absorb a step change to 8,000
+RPS. E3 should be re-run with a longer post-deploy settle before its ceiling is
+treated as a property of the system.
 
 ### E4 — Failure injection
 

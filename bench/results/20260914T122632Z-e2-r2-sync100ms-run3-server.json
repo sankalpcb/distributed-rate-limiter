@@ -1,0 +1,1 @@
+{"replica":"limiterd-00028-m4l","strategy":"localsync","admitted":29406,"denied":8014,"errors":0,"sync_failures":0,"server_p50_us":17,"server_p99_us":93,"server_p999_us":548,"server_max_us":11239}

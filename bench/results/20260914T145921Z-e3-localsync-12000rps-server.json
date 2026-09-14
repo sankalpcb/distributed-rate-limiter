@@ -1,0 +1,1 @@
+{"replica":"limiterd-00104-klw","strategy":"localsync","admitted":57087,"denied":0,"errors":0,"sync_failures":0,"server_p50_us":12,"server_p99_us":140,"server_p999_us":972,"server_max_us":5795}

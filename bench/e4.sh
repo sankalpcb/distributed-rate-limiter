@@ -41,13 +41,26 @@ REDIS_IP=$(gcloud redis instances describe drl-redis --region "$REGION" --format
 [[ -n "$REDIS_IP" ]] || { echo "could not resolve Memorystore address" >&2; exit 1; }
 log "Memorystore at ${REDIS_IP}"
 
-# Always remove the rule on the way out. Leaving it in place would silently
-# break every subsequent experiment, and the symptom -- a strategy that cannot
-# reach Redis -- looks like a code bug rather than leftover state.
-cleanup_rule() {
+# Two things must be undone on the way out, whatever happens.
+#
+# The firewall rule, because leaving it in place would silently break every
+# subsequent experiment -- and the symptom, a strategy that cannot reach Redis,
+# looks like a code bug rather than leftover state.
+#
+# The pinned replicas, because run.sh sets min-instances to hold the fleet
+# steady and never puts it back. At 4 vCPU that is 32 vCPU billing continuously
+# after the run ends.
+cleanup() {
+  local status=$?
   gcloud compute firewall-rules delete "$RULE" --quiet >/dev/null 2>&1 || true
+  log "releasing pinned replicas (min-instances -> 0)"
+  gcloud run services update "$SERVICE" --region "$REGION" \
+    --min-instances 0 --quiet >/dev/null 2>&1 \
+    && echo "    done" >&2 \
+    || echo "    WARNING: scale-down failed; the fleet keeps billing" >&2
+  exit $status
 }
-trap cleanup_rule EXIT INT TERM
+trap cleanup EXIT INT TERM
 
 cut_redis() {
   log "CUTTING Redis egress for ${CUT_FOR}s"

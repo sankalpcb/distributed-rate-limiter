@@ -1,0 +1,39 @@
+{
+  "label": "e2-r4-sync50ms-run1",
+  "config": {
+    "duration": "1m0s",
+    "keys": "1",
+    "limit": "700",
+    "max_inflight": "20000",
+    "rate": "1000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "15s"
+  },
+  "offered_rps": 1000,
+  "achieved_rps": 999.8913405192154,
+  "issued": 74999,
+  "completed": 59999,
+  "dropped_client_shed": 0,
+  "wall_seconds": 75.007150238,
+  "admitted": 44253,
+  "denied": 15746,
+  "failed": 0,
+  "shed_by_platform": 0,
+  "client_p50_ms": 8.95,
+  "client_p99_ms": 14.91,
+  "client_p999_ms": 34.43,
+  "client_max_ms": 411.9,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 700,
+  "sustained_over_admission_pct": 5.368038740920097,
+  "per_second_mean_over_admission_pct": 5.368038740920097,
+  "per_second_max_over_admission_pct": 6.857142857142858,
+  "seconds_over_limit": 59,
+  "seconds_measured": 59,
+  "status_counts": {
+    "200": 44253,
+    "429": 15746
+  },
+  "valid": true
+}

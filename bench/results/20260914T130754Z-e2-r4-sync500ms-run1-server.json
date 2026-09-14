@@ -1,0 +1,1 @@
+{"replica":"limiterd-00050-qjj","strategy":"localsync","admitted":24993,"denied":4,"errors":0,"sync_failures":0,"server_p50_us":26,"server_p99_us":140,"server_p999_us":583,"server_max_us":3217}

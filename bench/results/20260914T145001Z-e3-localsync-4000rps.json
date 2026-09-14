@@ -1,0 +1,38 @@
+{
+  "label": "e3-localsync-4000rps",
+  "config": {
+    "duration": "1m0s",
+    "keys": "1",
+    "limit": "40000",
+    "max_inflight": "20000",
+    "rate": "4000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "15s"
+  },
+  "offered_rps": 4000,
+  "achieved_rps": 3999.5195888460653,
+  "issued": 299996,
+  "completed": 239996,
+  "dropped_client_shed": 0,
+  "wall_seconds": 75.008008671,
+  "admitted": 239996,
+  "denied": 0,
+  "failed": 0,
+  "shed_by_platform": 0,
+  "client_p50_ms": 8.24,
+  "client_p99_ms": 14.89,
+  "client_p999_ms": 32.5,
+  "client_max_ms": 219.14,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 40000,
+  "sustained_over_admission_pct": -90,
+  "per_second_mean_over_admission_pct": 0,
+  "per_second_max_over_admission_pct": 0,
+  "seconds_over_limit": 0,
+  "seconds_measured": 59,
+  "status_counts": {
+    "200": 239996
+  },
+  "valid": true
+}

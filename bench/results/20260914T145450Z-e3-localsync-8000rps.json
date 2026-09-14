@@ -1,0 +1,46 @@
+{
+  "label": "e3-localsync-8000rps",
+  "config": {
+    "duration": "1m0s",
+    "keys": "1",
+    "limit": "80000",
+    "max_inflight": "20000",
+    "rate": "8000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "15s"
+  },
+  "offered_rps": 8000,
+  "achieved_rps": 7499.882818330955,
+  "issued": 599992,
+  "completed": 397437,
+  "dropped_client_shed": 92951,
+  "wall_seconds": 80.000183274,
+  "admitted": 328343,
+  "denied": 0,
+  "failed": 59569,
+  "shed_by_platform": 9525,
+  "client_p50_ms": 2895.87,
+  "client_p99_ms": 5009.41,
+  "client_p999_ms": 5058.56,
+  "client_max_ms": 5251.07,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 80000,
+  "sustained_over_admission_pct": -93.18584745762712,
+  "per_second_mean_over_admission_pct": 0,
+  "per_second_max_over_admission_pct": 0,
+  "seconds_over_limit": 0,
+  "seconds_measured": 59,
+  "status_counts": {
+    "200": 328343,
+    "429": 9525,
+    "500": 186
+  },
+  "valid": false,
+  "warnings": [
+    "client shed 92951 requests (15.49% of issued): the generator could not keep up, so latency is understated. Raise -max-inflight or use a larger VM.",
+    "achieved 7500 RPS against an offered 8000 (93.7%): the load generator, not the service, is the bottleneck. Results are not comparable across runs.",
+    "59569 requests failed (14.99% of completed): above 1%, treat this run as a failure experiment rather than a latency measurement",
+    "9525 requests (2.40%) were shed by Cloud Run before reaching limiterd: above 1%, this run measures platform capacity, not enforcement. Add replicas or lower the offered rate."
+  ]
+}
