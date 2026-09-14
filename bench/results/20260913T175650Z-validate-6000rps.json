@@ -1,0 +1,43 @@
+{
+  "label": "validate-6000rps",
+  "config": {
+    "duration": "30s",
+    "keys": "1",
+    "limit": "60000",
+    "max_inflight": "20000",
+    "rate": "6000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "10s"
+  },
+  "offered_rps": 6000,
+  "achieved_rps": 4837.918706460383,
+  "issued": 229032,
+  "completed": 81368,
+  "dropped_client_shed": 109858,
+  "wall_seconds": 47.34101871,
+  "admitted": 20411,
+  "denied": 2550,
+  "failed": 58407,
+  "client_p50_ms": 7172.1,
+  "client_p99_ms": 10919.94,
+  "client_p999_ms": 13295.62,
+  "client_max_ms": 14032.9,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 60000,
+  "sustained_over_admission_pct": -98.65193333333333,
+  "per_second_mean_over_admission_pct": 0,
+  "per_second_max_over_admission_pct": 0,
+  "seconds_over_limit": 0,
+  "seconds_measured": 25,
+  "status_counts": {
+    "200": 20411,
+    "429": 2550
+  },
+  "valid": false,
+  "warnings": [
+    "client shed 109858 requests (47.97% of issued): the generator could not keep up, so latency is understated. Raise -max-inflight or use a larger VM.",
+    "achieved 4838 RPS against an offered 6000 (80.6%): the load generator, not the service, is the bottleneck. Results are not comparable across runs.",
+    "58407 requests failed (71.78% of completed): above 1%, treat this run as a failure experiment rather than a latency measurement"
+  ]
+}

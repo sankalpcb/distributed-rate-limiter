@@ -2,9 +2,12 @@
 
 ## Status
 
-The harness is built and verified end to end. **The cloud runs have not been
-performed**, so this document currently describes the methodology and holds
-empty result tables. Nothing here is a measured claim unless it says so.
+The validation ladder has been run on GCP. E1-E5 have not.
+
+The ladder's result changes the plan for those experiments, so read
+[Capacity](#capacity-what-the-validation-ladder-established) before running
+them: the configurations written below assume far more throughput than this
+setup delivers.
 
 ## Methodology
 
@@ -50,7 +53,13 @@ A run self-reports as INVALID when:
 - achieved rate fell below 95% of offered (the generator, not the service, is
   the bottleneck);
 - more than 1% of requests failed (it is a failure experiment, not a latency
-  measurement).
+  measurement);
+- more than 1% were shed by the platform before reaching limiterd (the run is
+  measuring Cloud Run's capacity, not enforcement).
+
+The last gate was added after the first ladder passed a run whose p99 was 3.5
+seconds -- every client-side gate was satisfied while the service behind it was
+collapsing. See [the writeup below](#the-validity-gate-passed-a-run-that-was-on-fire).
 
 `make bench-validate` runs the ladder that establishes the generator's ceiling
 before any real experiment. **Do this before trusting a single number.** A load
@@ -69,6 +78,41 @@ produces a wrong chart:
   for showing burstiness, but **a token bucket is expected to exceed a
   per-second limit by up to its burst by design.** This number must never be
   used to compare `centralized` against the window strategies.
+
+## Capacity: what the validation ladder established
+
+Run 2026-09-13 against 4 Cloud Run replicas (1 vCPU, 512Mi) and Memorystore
+Basic 1GB, generated from an n2-standard-4 in the same region. Raw JSON in
+`bench/results/`.
+
+| Offered | Achieved | client p50 | client p99 | server p50 | 200s | 429s | Failed | Client-shed | Verdict |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|:--|
+| 2,000 | 1,999 | 8.83 ms | 36.99 ms | 14 us | 59,998 | 0 | 0 | 0 | VALID |
+| 2,000 (rerun) | 1,999 | 9.30 ms | 16.64 ms | 16 us | 59,998 | 0 | 0 | 0 | VALID |
+| 4,000 | 3,990 | 21.60 ms | 3,549 ms | 15 us | 88,470 | 30,975 | 551 | 0 | VALID (false pass) |
+| 6,000 | 4,838 | 7,172 ms | 10,920 ms | 14 us | 20,411 | 2,550 | 58,407 | 109,858 | INVALID |
+| 8,000 | 666 | 13,279 ms | 19,497 ms | 14 us | 7,153 | 1,980 | 37,763 | 220,541 | INVALID |
+| 12,000 | 10,093 | 7,258 ms | 15,254 ms | 15 us | 4,990 | 52 | 61,059 | 355,431 | INVALID |
+
+**The usable ceiling is about 2,000 RPS in this configuration.** Only the 2,000
+rungs are clean, and they reproduced across two separate ladders.
+
+**Consequence for the experiment plan:** E1 as written offers 8,000 RPS against
+4 replicas, which is roughly 4x past where this setup collapses. Before running
+it, either raise the replica count (16-32) or the CPU per instance, and enlarge
+the load generator -- at 8,000 offered the *client* achieved only 666 RPS.
+
+### The limiter was never the bottleneck
+
+Server-side handler latency held at **14-17 microseconds across every single
+rung**, including those where clients observed 13-second latencies. Nothing
+that broke was the rate-limiting logic; it was queueing, connections and
+platform capacity around it.
+
+This is the clearest argument for the two-ended measurement rule. A
+client-only benchmark would have reported this system degrading catastrophically
+past 4,000 RPS and implied the limiter was at fault. The server-side figure
+shows the limiter answering in microseconds the entire time.
 
 ## Experiments
 
@@ -154,3 +198,48 @@ it should.
 The general lesson is the one worth carrying: the benchmark is as much a piece
 of engineering as the system, and a metric that quietly compares two different
 guarantees fails silently rather than loudly.
+
+### The validity gate passed a run that was on fire
+
+The 4,000 RPS rung was marked VALID. It was not.
+
+Every gate passed: the client achieved 3,990 of 4,000 offered, shed nothing,
+and failures were 0.46% -- under the 1% bar. But p99 was 3.5 seconds and 26% of
+responses were 429s.
+
+Those 429s could not have been limiter denials. The service was configured with
+a 20,000/sec limit while only 4,000/sec was offered, so nothing should ever have
+been denied. They were Cloud Run shedding load when its instance queues filled
+-- and the generator counted platform overload as enforcement, reporting a
+melting service as a clean measurement.
+
+The gates were all asking "did the client behave?" and none asked "did the
+service?". A load generator can be perfectly healthy while the thing it is
+measuring falls over.
+
+Fixed by distinguishing a limiter decision from platform shedding: only
+limiterd returns a JSON body carrying `allowed`, so a 429 without one came from
+the platform. Runs now report `shed_by_platform` separately and fail validation
+above 1%.
+
+### Cloud Run reserves /healthz
+
+The readiness probe in `bench/run.sh` could never have succeeded. Google's
+front end answers `/healthz` itself on Cloud Run and the request never reaches
+the container. Of the seven paths tried -- `/health`, `/livez`, `/readyz`,
+`/healthcheck`, `/_ah/health`, `/ping` and `/healthz` -- only `/healthz` is
+intercepted.
+
+The tell is subtle: the 404 is Google's HTML error page rather than Go's plain
+`404 page not found`. The probe looped for 60 seconds and then ran the
+benchmark anyway. It now fails loudly instead.
+
+### Results survived a 16-hour hang because they were on disk
+
+The SSH session driving the second ladder died mid-run, leaving a zombie
+process that still looked alive. The runs completed on the VM; only the console
+output was lost. Every result survived because `loadgen` writes JSON to
+`bench/results/` rather than trusting stdout.
+
+Had the harness been stdout-only, sixteen hours of billed infrastructure would
+have produced nothing.

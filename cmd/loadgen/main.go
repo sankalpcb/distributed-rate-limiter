@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -84,6 +85,10 @@ type sample struct {
 	keyIdx   int
 	status   int
 	admitted bool
+	// shedByLB marks a non-2xx with no limiter body: the platform rejected the
+	// request before limiterd saw it. Counted separately so platform overload
+	// is never reported as enforcement.
+	shedByLB bool
 	failed   bool
 	warmup   bool
 }
@@ -133,6 +138,9 @@ func run(ctx context.Context, o options) (*Results, error) {
 
 	var issued int64
 	var dropped int64
+	// Tracks request goroutines so the sample channel is closed only once every
+	// sender has finished. See the comment at inflight.Wait() below.
+	var inflight sync.WaitGroup
 
 	for now := range ticker.C {
 		if now.After(deadline) {
@@ -151,7 +159,9 @@ func run(ctx context.Context, o options) (*Results, error) {
 
 			select {
 			case sem <- struct{}{}:
+				inflight.Add(1)
 				go func() {
+					defer inflight.Done()
 					defer func() { <-sem }()
 					samples <- fire(ctx, client, url, body, intended, keyIdx, isWarmup)
 				}()
@@ -165,11 +175,18 @@ func run(ctx context.Context, o options) (*Results, error) {
 		}
 	}
 
-	// Let outstanding requests land before closing the stream.
-	drainDeadline := time.Now().Add(o.timeout + time.Second)
-	for len(sem) > 0 && time.Now().Before(drainDeadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Wait for every in-flight request to finish sending before closing the
+	// stream.
+	//
+	// This was previously a deadline-based drain, which raced: when a request
+	// outlived the deadline, close(samples) ran while its goroutine was still
+	// sending, and the whole process died with "send on closed channel" --
+	// taking the run's results with it. A deadline is the wrong tool because
+	// the safe moment to close is defined by the senders, not by the clock.
+	//
+	// Waiting is bounded without a timeout of its own: every request carries
+	// the client's timeout, so each goroutine is guaranteed to return.
+	inflight.Wait()
 	close(samples)
 
 	res := <-done
@@ -193,21 +210,35 @@ func fire(ctx context.Context, c *http.Client, url string, body []byte, intended
 	if err != nil {
 		return sample{intended: intended, keyIdx: keyIdx, failed: true, warmup: isWarmup, latency: time.Since(intended)}
 	}
-	// Body must be drained for the connection to be reused; skipping this
-	// silently collapses the pool and turns the benchmark into a dial test.
-	_, _ = resp.Body.Read(make([]byte, 0))
+	// The body must be drained and closed for the connection to be reused;
+	// skipping it silently collapses the pool and turns the benchmark into a
+	// dial test.
 	var decoded struct {
-		Allowed bool `json:"allowed"`
+		Allowed *bool `json:"allowed"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&decoded)
+	decodeErr := json.NewDecoder(resp.Body).Decode(&decoded)
 	_ = resp.Body.Close()
+
+	// Distinguish a limiter decision from platform shedding.
+	//
+	// Cloud Run returns its own 429 when an instance's request queue is full,
+	// and that looks identical to a rate-limit denial if you only inspect the
+	// status code. Conflating them is not a cosmetic problem: it reports the
+	// platform running out of capacity as though the limiter were working,
+	// which would make an overloaded run look like a successful enforcement
+	// measurement.
+	//
+	// Only limiterd emits a JSON body carrying "allowed", so its presence is
+	// what separates the two.
+	isLimiterDecision := decodeErr == nil && decoded.Allowed != nil
 
 	return sample{
 		latency:  time.Since(intended),
 		intended: intended,
 		keyIdx:   keyIdx,
 		status:   resp.StatusCode,
-		admitted: decoded.Allowed,
+		admitted: isLimiterDecision && *decoded.Allowed,
+		shedByLB: !isLimiterDecision && resp.StatusCode < 500,
 		failed:   resp.StatusCode >= 500,
 		warmup:   isWarmup,
 	}

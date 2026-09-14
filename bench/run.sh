@@ -48,6 +48,9 @@ fi
 
 mkdir -p "$RESULTS_DIR"
 
+if [[ "${SKIP_DEPLOY:-0}" == "1" ]]; then
+  log "SKIP_DEPLOY=1: reusing the running configuration"
+else
 log "deploying ${SERVICE}: strategy=${STRATEGY} replicas=${REPLICAS} sync=${SYNC_INTERVAL} fail=${FAIL_MODE}"
 # min == max pins the replica count for the duration of the run. Without this,
 # autoscaling changes the fleet size mid-measurement and the enforcement error
@@ -58,6 +61,7 @@ gcloud run services update "$SERVICE" \
   --max-instances "$REPLICAS" \
   --update-env-vars "LIMITER_STRATEGY=${STRATEGY},RATE=${LIMIT},BURST=${BURST},WINDOW=${WINDOW},SYNC_INTERVAL=${SYNC_INTERVAL},FAIL_MODE=${FAIL_MODE}" \
   --quiet >/dev/null
+fi
 
 URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
 log "service at ${URL}"

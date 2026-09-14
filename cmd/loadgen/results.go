@@ -26,6 +26,11 @@ type Results struct {
 	Admitted int64 `json:"admitted"`
 	Denied   int64 `json:"denied"`
 	Failed   int64 `json:"failed"`
+	// ShedByPlatform counts requests rejected by Cloud Run before reaching
+	// limiterd -- its own 429 when an instance queue fills. These are NOT
+	// limiter denials, and a run with many of them is measuring platform
+	// capacity rather than enforcement.
+	ShedByPlatform int64 `json:"shed_by_platform"`
 
 	// Client-observed latency, measured from intended send time.
 	P50MS  float64 `json:"client_p50_ms"`
@@ -87,6 +92,8 @@ func record(samples <-chan sample, o options) *Results {
 		switch {
 		case s.failed:
 			r.Failed++
+		case s.shedByLB:
+			r.ShedByPlatform++
 		case s.admitted:
 			r.Admitted++
 			sec := s.intended.Unix()
@@ -218,6 +225,16 @@ func (r *Results) validate(o options) {
 		r.Warnings = append(r.Warnings, msg)
 	}
 
+	if r.ShedByPlatform > 0 {
+		pct := float64(r.ShedByPlatform) / float64(max64(r.Completed, 1)) * 100
+		msg := fmt.Sprintf("%d requests (%.2f%%) were shed by Cloud Run before reaching limiterd", r.ShedByPlatform, pct)
+		if pct > 1 {
+			r.Valid = false
+			msg += ": above 1%, this run measures platform capacity, not enforcement. Add replicas or lower the offered rate."
+		}
+		r.Warnings = append(r.Warnings, msg)
+	}
+
 	if r.Completed == 0 {
 		r.Warnings = append(r.Warnings, "no requests completed")
 		r.Valid = false
@@ -228,8 +245,8 @@ func (r *Results) printSummary(w io.Writer) {
 	fmt.Fprintf(w, "\n=== loadgen: %s ===\n", orDash(r.Label))
 	fmt.Fprintf(w, "offered      %.0f RPS   achieved %.0f RPS   wall %.1fs\n",
 		r.OfferedRPS, r.AchievedRPS, r.WallSeconds)
-	fmt.Fprintf(w, "completed    %d  (admitted %d, denied %d, failed %d, client-shed %d)\n",
-		r.Completed, r.Admitted, r.Denied, r.Failed, r.Dropped)
+	fmt.Fprintf(w, "completed    %d  (admitted %d, denied %d, failed %d, client-shed %d, platform-shed %d)\n",
+		r.Completed, r.Admitted, r.Denied, r.Failed, r.Dropped, r.ShedByPlatform)
 	fmt.Fprintf(w, "\nclient latency, from intended send time\n")
 	fmt.Fprintf(w, "  p50   %8.3f ms\n  p99   %8.3f ms\n  p999  %8.3f ms\n  max   %8.3f ms\n",
 		r.P50MS, r.P99MS, r.P999MS, r.MaxMS)

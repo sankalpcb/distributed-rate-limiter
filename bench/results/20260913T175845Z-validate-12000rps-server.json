@@ -1,0 +1,1 @@
+{"replica":"limiterd-00009-z76","strategy":"localsync","admitted":25367,"denied":0,"errors":0,"sync_failures":0,"server_p50_us":15,"server_p99_us":84,"server_p999_us":290,"server_max_us":40799}

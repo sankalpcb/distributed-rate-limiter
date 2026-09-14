@@ -23,11 +23,17 @@ log() { printf '\n\033[1;34m### %s\033[0m\n' "$*" >&2; }
 # so the only thing under test is whether the client keeps up.
 validate() {
   log "VALIDATION: can the generator sustain its offered rate?"
-  for rps in 2000 5000 10000 20000; do
+  # Deploy once, then reuse it. This ladder tests the CLIENT, not the service
+  # configuration, and a Cloud Run redeploy between rungs costs ~90s each for
+  # no change to what is being measured.
+  local first=1
+  for rps in ${VALIDATE_RATES:-2000 4000 6000 8000 12000}; do
     log "offering ${rps} RPS"
     OFFERED=$rps LIMIT=$((rps * 10)) BURST=$((rps * 10)) \
       STRATEGY=localsync REPLICAS=4 DURATION=30s WARMUP=10s \
+      SKIP_DEPLOY=$([[ $first == 1 ]] && echo 0 || echo 1) \
       LABEL="validate-${rps}rps" ./bench/run.sh || true
+    first=0
   done
   echo
   echo "Read the 'achieved' line and the verdict for each run. The highest rate"

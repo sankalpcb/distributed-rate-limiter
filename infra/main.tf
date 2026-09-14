@@ -103,6 +103,14 @@ resource "google_cloud_run_v2_service" "limiterd" {
   name     = var.service_name
   location = var.region
 
+  # The provider defaults this to true, which makes `terraform destroy` fail
+  # partway through -- after the VM and registry are gone but while Redis and
+  # the network remain. For a benchmark environment that is created and
+  # destroyed every session, a teardown that half-completes is worse than no
+  # protection at all: it leaves billable resources behind precisely when you
+  # believe you have cleaned up.
+  deletion_protection = false
+
   # The benchmark drives this service's env vars and instance counts via
   # `gcloud run services update` (see bench/run.sh), so Terraform must not
   # fight the harness by reverting them on the next apply.

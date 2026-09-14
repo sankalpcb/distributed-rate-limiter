@@ -11,10 +11,10 @@ same time. This measures what each one costs.
 
 ## Results
 
-> **Status: not yet measured.** The harness is built and verified; the cloud
-> runs have not been performed. Numbers below are placeholders and are marked
-> as such deliberately — see [docs/benchmarks.md](docs/benchmarks.md) for the
-> methodology they will be collected under.
+> **Status: capacity established, strategy comparison not yet run.** The
+> validation ladder has been run on GCP and is reported in
+> [docs/benchmarks.md](docs/benchmarks.md#capacity-what-the-validation-ladder-established).
+> E1 and E2 below are still placeholders.
 
 ### E1 — Strategy comparison
 
@@ -44,16 +44,15 @@ Everything below was run and observed, as distinct from the results above:
 - All three strategies pass unit tests, including the real Lua scripts
   executed against an in-process Redis, and integration tests against a
   real Redis in CI.
-- End-to-end local smoke test of the full path — service, Redis, load
-  generator, metrics.
-- `centralized` measured **0.00%** sustained over-admission locally, which is
-  the correctness property it is supposed to have.
-
-A laptop smoke test at 800 RPS showed server-side p50 of **12µs** for
-`localsync` against **300µs** for `centralized` — the expected direction,
-since `localsync` keeps Redis off the request path. **These are not results.**
-They came from a single-threaded in-process Redis on a laptop, and they are
-recorded here only to show the harness works, not to claim a finding.
+- Deployed on GCP against Memorystore. Verified there: 8 concurrent requests
+  at cost 400 against a burst of 1000 admitted **exactly 2** and denied 6 —
+  the Lua atomicity property holding under real concurrency across replicas.
+- `centralized` measured **0.00%** sustained over-admission, the correctness
+  property it is supposed to have.
+- A validation ladder established the capacity ceiling at roughly **2,000 RPS**
+  for 4 replicas of 1 vCPU. Server-side handler latency stayed at **14–17µs**
+  across every rung, including ones where clients saw 13-second latencies —
+  the limiter was never the bottleneck.
 
 ---
 

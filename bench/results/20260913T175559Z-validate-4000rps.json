@@ -1,0 +1,42 @@
+{
+  "label": "validate-4000rps",
+  "config": {
+    "duration": "30s",
+    "keys": "1",
+    "limit": "40000",
+    "max_inflight": "20000",
+    "rate": "4000",
+    "target": "https://limiterd-s5buuu6kxq-uc.a.run.app",
+    "timeout": "5s",
+    "warmup": "10s"
+  },
+  "offered_rps": 4000,
+  "achieved_rps": 3989.92122526949,
+  "issued": 159996,
+  "completed": 119996,
+  "dropped_client_shed": 0,
+  "wall_seconds": 40.100039817,
+  "admitted": 88470,
+  "denied": 30975,
+  "failed": 551,
+  "client_p50_ms": 21.6,
+  "client_p99_ms": 3549.18,
+  "client_p999_ms": 3895.3,
+  "client_max_ms": 4722.69,
+  "enforcement_measured": true,
+  "limit_per_key_per_second": 40000,
+  "sustained_over_admission_pct": -92.59293103448276,
+  "per_second_mean_over_admission_pct": 0,
+  "per_second_max_over_admission_pct": 0,
+  "seconds_over_limit": 0,
+  "seconds_measured": 29,
+  "status_counts": {
+    "200": 88470,
+    "429": 30975,
+    "500": 551
+  },
+  "valid": true,
+  "warnings": [
+    "551 requests failed (0.46% of completed)"
+  ]
+}
