@@ -70,7 +70,19 @@ excess ≤ (R − 1) × A
 where `R` is the replica count and `A` is what one replica can admit within one
 interval before reconciling. That bound is loose — it assumes every replica
 independently exhausts the full remaining budget — and measuring where reality
-falls inside it is the point of experiment E2.
+falls inside it was the point of experiment E2.
+
+**E2 disproved this model.** Error does not grow with `(R − 1)`; it *saturates*
+in replica count. R=8 and R=16 measured the same at every sync interval
+(2.65/2.68%, 6.32/6.30%, 12.48/12.64%, 31.16/31.10%). Because total offered
+load is fixed, doubling the replica count halves each replica's share of it,
+and the fleet's unsynced admissions stay near `admission_rate × sync_interval`
+however many replicas divide it.
+
+The bound above remains a valid upper limit and a useless predictor. The sync
+interval is the governing variable; past about R=8 the replica count stops
+mattering. See
+[benchmarks.md](benchmarks.md#e2--enforcement-error-vs-sync-interval-and-replica-count).
 
 Two properties follow from taking Redis off the request path:
 
