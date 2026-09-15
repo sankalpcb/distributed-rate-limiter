@@ -2,7 +2,10 @@
 
 ## Status
 
-The validation ladder has been run on GCP. E1-E5 have not.
+E1, E2 and E3 have been run on GCP and are reported below with their raw JSON
+in `bench/results/`. E4 was attempted and could not be performed against
+managed Memorystore; the reasons are documented rather than left blank, since
+they constrain anyone attempting the same test. E5 was not attempted.
 
 The ladder's result changes the plan for those experiments, so read
 [Capacity](#capacity-what-the-validation-ladder-established) before running
@@ -275,16 +278,70 @@ treated as a property of the system.
 
 ### E4 — Failure injection
 
-Kill Redis partway through a run. Three configurations:
+**Attempted 2026-09-14/15. No valid results obtained.** The intended
+comparison:
 
-| Run | Expected behaviour | Measured |
-|---|---|---|
-| `centralized`, fail-closed | 503s, admissions collapse to zero; backend protected, service down | — |
-| `centralized`, fail-open | Everything admitted, enforcement gone; service up, backend exposed | — |
-| `localsync` | Keeps serving from local state; `sync_failures` climbs while admissions continue; accuracy decays with outage duration | — |
+| Run | Expected behaviour |
+|---|---|
+| `centralized`, fail-closed | 503s, admissions collapse to zero; backend protected, service down |
+| `centralized`, fail-open | Everything admitted, enforcement gone; service up, backend exposed |
+| `localsync` | Keeps serving from local state; `sync_failures` climbs while admissions continue |
 
-The contrast between the third row and the first two is the strongest result in
-the project.
+The blocker is structural rather than incidental, and worth recording because
+it constrains how anyone can chaos-test managed Redis on GCP.
+
+#### A Memorystore instance on DIRECT_PEERING cannot be partitioned from Cloud Run
+
+Three approaches, each failing for a different and instructive reason.
+
+**1. Deny-egress firewall rule to the Memorystore address.** No effect
+whatsoever: the run completed with `errors: 0`, `sync_failures: 0`, and a
+normal admitted/denied split. GCP firewall rules are connection-tracked, so the
+rule blocked *new* connections while go-redis's already-established pool
+carried on untouched. Blocking the door after everyone is inside.
+
+This is the failure worth internalising, because it looks like success. The
+rule was created, the API accepted it, the logs showed it applied — and
+nothing happened. Had the run been marginally noisy, it could have been
+mistaken for a mild outage and written up as one.
+
+**2. Blackhole route.** A /32 for the Redis address pointed at the internet
+gateway, more specific than the /29 peering route that normally reaches it.
+Routes are evaluated per packet rather than per connection, so this should
+have severed live connections. The API rejected it outright:
+
+    10.204.174.227/32 hides the address space of the peer network from
+    peering (redis-peer-...). Cannot change the routing of packets destined
+    for the peer network.
+
+Memorystore reaches the VPC through network peering, and GCP forbids routes
+that override paths into a peered network. There is no route-level lever.
+
+**3. Repointing REDIS_ADDR at an unroutable address.** This does produce the
+condition under test — connection timeouts — and is reversible in one command.
+It works, but it rolls a new Cloud Run revision, so instances restart and
+`localsync` enters the outage with empty local state rather than carrying
+accumulated drift into it. The availability claim would still be tested; the
+drift-over-time nuance would not.
+
+The runs failed for an unrelated reason: the orchestration stalled, so the
+45-second cut landed outside the measurement window. One run recorded
+`REDIS UNREACHABLE 02:45` and `RESTORING 08:41` — a six-hour "cut" whose
+outage fell entirely outside the 150s window, producing a clean VALID run of a
+perfectly healthy service.
+
+#### How to actually get this result
+
+Run Redis on a VM instead of Memorystore. `iptables -A INPUT -p tcp --dport
+6379 -j DROP`, or simply stopping the process, gives a real partition that
+affects established connections immediately — and costs less than Memorystore
+besides. The managed service buys availability and patching, and charges for
+it by removing the ability to break it on purpose.
+
+That is a fair trade for production and the wrong one for a chaos experiment,
+which is itself a reasonable observation to make in the writeup: the
+properties that make a managed dependency good to depend on are the same ones
+that make it hard to test your behaviour when it fails.
 
 ### E5 — Cold-start admission spike (optional)
 

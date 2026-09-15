@@ -11,7 +11,7 @@ same time. This measures what each one costs.
 
 ## Results
 
-> **Status: E1 complete.** E2–E4 still to run.
+> **Status: E1–E3 complete.** E4 could not be run on managed Memorystore — see below.
 
 ### E1 — Strategy comparison
 
@@ -36,12 +36,45 @@ strategies are indistinguishable. See
 
 ### E2 — Enforcement error vs sync interval and replica count
 
-The chart this project exists to produce. Over-admission is expected to grow
-with both the sync interval and the replica count; the
-[design doc](docs/design.md#localsync) states the predicted bound, and the
-benchmark measures where reality falls inside it.
+72 runs, 3 per cell, all VALID with zero platform shedding. Sustained
+over-admission, mean of 3 runs:
 
-*(chart pending)*
+| R \ sync | 20ms | 50ms | 100ms | 250ms | 500ms | 1s |
+|---:|---:|---:|---:|---:|---:|---:|
+| **2** | 1.54% | 2.81% | 7.22% | 18.04% | 32.29% | 39.26% |
+| **4** | 1.99% | 5.54% | 9.70% | 26.78% | 37.96% | 31.11% |
+| **8** | 2.65% | 6.32% | 12.48% | 31.16% | 40.92% | 42.83% |
+| **16** | 2.68% | 6.30% | 12.64% | 31.10% | 41.59% | 42.86%\* |
+
+**The design doc predicted error would scale with `(R−1)`. It does not.** Error
+*saturates* in replica count — R=8 and R=16 are indistinguishable at every
+interval. Total offered load is fixed, so doubling replicas halves each one's
+share, and the fleet's unsynced admissions stay near
+`admission_rate × sync_interval` however many replicas divide it. **The sync
+interval governs; the replica count barely matters past R≈8.**
+
+\*Read only the 20–100ms region as measurement. Offering 1,000 RPS against a
+700 limit caps observable over-admission at 42.86%, and R=16/1s measures
+exactly that — the experiment's ceiling, not the limiter's behaviour. Run-to-run
+spread confirms it: under 1 point below 100ms, up to 29.6 points at R=4/1s.
+Details in [docs/benchmarks.md](docs/benchmarks.md#e2--enforcement-error-vs-sync-interval-and-replica-count).
+
+### E3 — Throughput ceiling
+
+`centralized`'s server-side p50 knees **42×** between 6,000 and 8,000 RPS as
+Redis saturates (1,421µs → 59,871µs). `localsync` shows no knee at all, holding
+11–13µs throughout. That is the shared store's throughput becoming the fleet's
+throughput — the structural argument for keeping it off the request path.
+
+Caveats on that result, and on why E4 has no results, are in
+[docs/benchmarks.md](docs/benchmarks.md).
+
+### E4 — Failure injection
+
+**Not obtained.** A Memorystore instance on DIRECT_PEERING cannot be
+partitioned from Cloud Run: firewall rules are connection-tracked and routes
+into a peered network are rejected. Three approaches and what each taught are
+written up in [docs/benchmarks.md](docs/benchmarks.md#e4--failure-injection).
 
 ---
 

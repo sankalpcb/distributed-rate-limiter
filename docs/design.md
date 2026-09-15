@@ -118,7 +118,11 @@ about which failure to absorb:
   your own outage.
 
 It is a deployment decision, not a library default, so it is configuration.
-Both are measured in E4 rather than argued about.
+Both were intended to be measured in E4 rather than argued about -- but that
+experiment could not be performed against managed Memorystore, which cannot be
+partitioned from Cloud Run by firewall or by route. The reasoning below stands
+as reasoning; it is not backed by measurement, and
+[benchmarks.md](benchmarks.md#e4--failure-injection) says so explicitly.
 
 `localsync` largely sidesteps the question: Redis is not on its request path,
 so an outage degrades accuracy instead of availability.
